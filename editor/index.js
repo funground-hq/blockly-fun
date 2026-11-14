@@ -7,7 +7,7 @@
 //   toPython(workspaceJson);                                 // the same, with no page (tests, tools)
 
 import * as Blockly from "blockly";
-import { registerBlocks, registeredSettings, toolbox } from "./blocks/register.js";
+import { registerBlocks, registeredSettings, toolbox, watchLines } from "./blocks/register.js";
 import { generator } from "./generator/python.js";
 
 function ensureRegistered() {
@@ -46,6 +46,7 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
       move: { scrollbars: true, drag: true, wheel: true },
     });
     if (json) Blockly.serialization.workspaces.load(json, workspace);
+    watchLines(workspace);
     workspace.addChangeListener(changed);
     onChange(generator.workspaceToCode(workspace));
   }

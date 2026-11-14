@@ -7,7 +7,8 @@
 //   scratch   the label in Scratch's words
 //   python    the label in Python's words
 //   line      the Python line shown under the label (a string, or {if, elseif, else})
-//   fields    the named fields: name (a Python name), text, number, code, dropdown
+//   fields    the named fields: name (a typed Python name), var (a name chosen from the program's), text, number,
+//             code, params, dropdown
 //   body      the names of the statement inputs (the C-shaped part)
 //   mutator   "items" | "args" | "if": the gear
 //
@@ -32,6 +33,8 @@ export const CATEGORIES = [
 const opt = (value, scratch, python = scratch) => ({ value, scratch, python });
 
 const NAME = (def) => ({ kind: "name", default: def });
+// a variable or loop variable: a dropdown of the names used in the program (FieldName in register.js)
+const VARNAME = (def) => ({ kind: "var", default: def });
 
 const CALL_FN = {
   cat: "calls",
@@ -88,19 +91,19 @@ export const BLOCKS = [
 
   // Variables
   {
-    type: "variable", kind: "value", cat: "variables", fields: { VAR: NAME("v") },
+    type: "variable", kind: "value", cat: "variables", fields: { VAR: VARNAME("v") },
     scratch: "[VAR]", python: "[VAR]", line: null,
   },
   {
-    type: "set", kind: "statement", cat: "variables", fields: { VAR: NAME("v") },
+    type: "set", kind: "statement", cat: "variables", fields: { VAR: VARNAME("v") },
     scratch: "set [VAR] to {VALUE}", python: "[VAR] = {VALUE}", line: "[VAR] = x",
   },
   {
-    type: "change", kind: "statement", cat: "variables", fields: { VAR: NAME("v") },
+    type: "change", kind: "statement", cat: "variables", fields: { VAR: VARNAME("v") },
     scratch: "change [VAR] by {VALUE}", python: "[VAR] += {VALUE}", line: "[VAR] += x",
   },
   {
-    type: "subtract", kind: "statement", cat: "variables", fields: { VAR: NAME("v") },
+    type: "subtract", kind: "statement", cat: "variables", fields: { VAR: VARNAME("v") },
     scratch: "subtract {VALUE} from [VAR]", python: "[VAR] -= {VALUE}", line: "[VAR] -= x",
   },
 
@@ -148,17 +151,17 @@ export const BLOCKS = [
     scratch: "repeat {N} times", python: "for _ in range({N})", line: "for _ in range(N):",
   },
   {
-    type: "count", kind: "statement", cat: "control", body: ["DO"], fields: { VAR: NAME("i") },
+    type: "count", kind: "statement", cat: "control", body: ["DO"], fields: { VAR: VARNAME("i") },
     scratch: "count [VAR] from {A}, up to but not {B}", python: "for [VAR] in range({A}, {B})",
     line: "for [VAR] in range(A, B):",
   },
   {
-    type: "count_by", kind: "statement", cat: "control", body: ["DO"], fields: { VAR: NAME("i") },
+    type: "count_by", kind: "statement", cat: "control", body: ["DO"], fields: { VAR: VARNAME("i") },
     scratch: "count [VAR] from {A}, up to but not {B}, by {S}", python: "for [VAR] in range({A}, {B}, {S})",
     line: "for [VAR] in range(A, B, S):",
   },
   {
-    type: "for_each", kind: "statement", cat: "control", body: ["DO"], fields: { VAR: NAME("item") },
+    type: "for_each", kind: "statement", cat: "control", body: ["DO"], fields: { VAR: VARNAME("item") },
     scratch: "for each [VAR] in {LIST}", python: "for [VAR] in {LIST}", line: "for [VAR] in L:",
   },
   { type: "forever", kind: "statement", cat: "control", body: ["DO"], scratch: "forever", python: "while True", line: "while True:" },
@@ -215,3 +218,54 @@ export const BLOCKS = [
 ];
 
 export const BY_TYPE = Object.fromEntries(BLOCKS.map((b) => [b.type, b]));
+
+// What a block brings from the toolbox in each value slot, so it can be edited at once, as in Scratch:
+//   {number: 10}  a number shadow         {text: "Hello!"}  a text shadow
+//   {name: "list"} a variable shadow      {cond: true}      a real comparison (0 = 0) with number shadows in it
+// A shadow is typed over, or covered by dropping a block on it. A comparison is a block like any other, so it is
+// edited or replaced; a shadow may not hold a real block, which is why the condition is not a shadow.
+const number = (value) => ({ number: value });
+const text = (value) => ({ text: value });
+const name = (value) => ({ name: value });
+const cond = { cond: true };
+
+export const DEFAULTS = {
+  say: { ARG0: text("Hello!") },
+  ask: { Q: text("What is your name? ") },
+  to_int: { X: text("5") },
+  to_float: { X: text("3.5") },
+  to_str: { X: number(0) },
+  set: { VALUE: number(0) },
+  change: { VALUE: number(1) },
+  subtract: { VALUE: number(1) },
+  arith: { A: number(0), B: number(0) },
+  floordiv: { A: number(0), B: number(1) },
+  mod: { A: number(0), B: number(1) },
+  power: { A: number(0), B: number(2) },
+  negate: { X: number(0) },
+  randint: { A: number(1), B: number(6) },
+  round: { X: number(0) },
+  sqrt: { X: number(0) },
+  abs: { X: number(0) },
+  compare: { A: number(0), B: number(0) },
+  logic: { A: cond, B: cond },
+  not: { X: cond },
+  repeat: { N: number(10) },
+  count: { A: number(0), B: number(10) },
+  count_by: { A: number(0), B: number(10), S: number(1) },
+  for_each: { LIST: name("list") },
+  while: { COND: cond },
+  until: { COND: cond },
+  if: { IF0: cond },
+  wait: { N: number(1) },
+  list_of: { ARG0: number(1), ARG1: number(2) },
+  add_to: { X: text("thing"), LIST: name("list") },
+  item_at: { N: number(0), LIST: name("list") },
+  set_item: { N: number(0), LIST: name("list"), X: number(0) },
+  remove_item: { N: number(0), LIST: name("list") },
+  length: { X: text("Hello") },
+  contains: { LIST: name("list"), X: text("a") },
+  return: { VALUE: number(0) },
+  method: { OBJ: name("x") },
+  method_value: { OBJ: name("x") },
+};

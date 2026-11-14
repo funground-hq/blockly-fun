@@ -5,7 +5,7 @@
 // `, ` between arguments, `k=v` for keyword arguments, brackets only where Python's precedence needs them.
 
 import * as Blockly from "blockly";
-import { typeOf } from "../blocks/register.js";
+import { typeOf, setLineProvider } from "../blocks/register.js";
 
 /**
  * Python's precedence, tightest first. A value block returns [code, order]; a slot says the weakest order it takes
@@ -35,6 +35,7 @@ class PythonGenerator extends Blockly.CodeGenerator {
     super("Python");
     this.INDENT = "    ";
     this.modules = new Set();
+    this.headerOnly = false; // true while a block's own lines are made for its Python line: bodies are left out
   }
 
   init(workspace) {
@@ -70,6 +71,7 @@ class PythonGenerator extends Blockly.CodeGenerator {
 
   /** The indented body of a C-shaped input; `pass` if nothing is in it. */
   body(block, name) {
+    if (this.headerOnly) return "";
     return this.statementToCode(block, name) || this.INDENT + "pass\n";
   }
 
@@ -268,3 +270,19 @@ define("code_value", (b) => {
   const text = b.getFieldValue("TEXT");
   return [text, SIMPLE_ATOM.test(text) ? ORDER.ATOMIC : ORDER.LOWEST];
 });
+
+// The Python line under a block (register.js): the block's own lines, the ones that start in column 0, with its
+// real values. For an if block, line 0 is the "if", line 1 an "elif" and so on.
+export function headerLines(block) {
+  const make = F[block.type];
+  if (!make) return [];
+  g.headerOnly = true;
+  try {
+    const code = make(block, g);
+    return typeof code === "string" ? code.split("\n").filter((l) => /^\S/.test(l)) : [];
+  } finally {
+    g.headerOnly = false;
+  }
+}
+
+setLineProvider((block, index) => headerLines(block)[index] ?? null);

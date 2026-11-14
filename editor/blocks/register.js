@@ -1,11 +1,12 @@
 // Registers the blocks of table.js with Blockly, for one pair of settings:
 //   words: "scratch" | "python"   which label a block shows
-//   pythonLine: true | false      whether the small grey line of Python shows under the label
+//   pythonLine: true | false      whether the small grey line of Python shows under the label of a statement block
+//                                 (only with Scratch words: with Python words the label is the Python)
 // The settings change only what a block shows. Block types, fields and inputs stay the same, so a workspace saved
 // as JSON loads under either setting and makes the same Python.
 
 import * as Blockly from "blockly";
-import { BLOCKS, CATEGORIES } from "./table.js";
+import { BLOCKS, CATEGORIES, DEFAULTS } from "./table.js";
 
 export const PREFIX = "bf_";
 export const typeOf = (id) => PREFIX + id;
@@ -31,8 +32,143 @@ const paramsValidator = (text) => {
   return parts.every(isName) ? parts.join(", ") : null;
 };
 
+// A name chosen from the names the program uses (BF-D-015): the dropdown lists the variable names and the
+// parameters of "make a block" found in the workspace, sorted, and "new name\u2026". The value is plain text.
+export const NEW_NAME_OPTION = "new name\u2026";
+const NEW_NAME = "\u0000new-name";
+
+export class FieldName extends Blockly.FieldDropdown {
+  constructor(defaultName) {
+    const own = { name: defaultName };
+    super(function () { return FieldName.options(this, own.name); });
+    this.setValue(defaultName);
+  }
+
+  /** The names of the workspace the field is in (the main workspace, for a block in the toolbox), and its own. */
+  static namesIn(field) {
+    const block = field.getSourceBlock();
+    let workspace = block ? block.workspace : null;
+    if (workspace && workspace.isFlyout) workspace = workspace.targetWorkspace;
+    const names = new Set();
+    for (const other of workspace ? workspace.getAllBlocks(false) : []) {
+      for (const input of other.inputList) {
+        for (const f of input.fieldRow) {
+          if (f instanceof FieldName) names.add(f.getValue());
+          else if (f.name === "PARAMS") f.getValue().split(",").map((p) => p.trim()).filter(Boolean).forEach((p) => names.add(p));
+        }
+      }
+    }
+    return names;
+  }
+
+  static options(field, fallback) {
+    const names = FieldName.namesIn(field);
+    const own = field.getValue ? field.getValue() : null;
+    if (own) names.add(own);
+    else if (fallback) names.add(fallback);
+    return [...[...names].filter(isName).sort().map((n) => [n, n]), [NEW_NAME_OPTION, NEW_NAME]];
+  }
+
+  // Any Python name is a value, listed or not; anything else is refused and the old value stays.
+  doClassValidation_(value) {
+    return typeof value === "string" && isName(value) ? value : null;
+  }
+
+  doValueUpdate_(value) {
+    super.doValueUpdate_(value);
+    if (!this.selectedOption || this.selectedOption[1] !== value) this.selectedOption = [value, value];
+  }
+
+  onItemSelected_(menu, menuItem) {
+    if (menuItem.getValue() === NEW_NAME) this.askForName();
+    else super.onItemSelected_(menu, menuItem);
+  }
+
+  askForName() {
+    Blockly.dialog.prompt("New name", "", (text) => {
+      if (text !== null && text !== undefined) this.acceptName(text);
+    });
+  }
+
+  /** Takes a typed name if Python can use it; says so, and keeps the old value, if not. */
+  acceptName(text) {
+    const name = text.trim();
+    if (!isName(name)) {
+      if (name !== "") Blockly.dialog.alert(`"${name}" is not a name Python can use. Use letters, digits and _, and do not start with a digit.`);
+      return false;
+    }
+    this.setValue(name);
+    return true;
+  }
+}
+
+// The grey line of Python under a statement's label: the block's own first line, with its real values.
+// Measured at its own small font, so its row is only as tall as its text.
+const LINE_HEIGHT = 11;
+const LINE_MAX = 40;
+let lineProvider = null;
+
+/** The generator gives the lines: (block, index) => text or null. Set by generator/python.js. */
+export function setLineProvider(provider) {
+  lineProvider = provider;
+}
+
+class FieldPythonLine extends Blockly.FieldLabel {
+  constructor(index, template) {
+    super(template, "bf-python-line");
+    this.index = index;
+    this.template = template;
+  }
+
+  /** The text shown: the real line, shortened with an ellipsis past LINE_MAX characters. */
+  lineText() {
+    const block = this.getSourceBlock();
+    let text = null;
+    if (block && lineProvider) {
+      try { text = lineProvider(block, this.index); } catch (error) { text = null; }
+    }
+    if (text === null || text === undefined) text = block ? fillTemplate(this.template, block) : this.template;
+    return text.length > LINE_MAX ? text.slice(0, LINE_MAX - 1) + "\u2026" : text;
+  }
+
+  getDisplayText_() {
+    this.shown = this.lineText();
+    return this.shown.replace(/\s/g, "\u00a0");
+  }
+
+  /** Draws the line again if the block's code is not what is on the screen. */
+  refresh() {
+    if (this.lineText() !== this.shown) this.forceRerender();
+  }
+
+  updateSize_() {
+    super.updateSize_(0);
+    this.size_.height = LINE_HEIGHT;
+    this.positionTextElement_(0, this.size_.width);
+  }
+}
+
+/**
+ * Keeps the Python lines of a workspace true: when a block, or something inside it, changes, the lines of that
+ * block and of the blocks around it are drawn again if their text changed.
+ */
+export function watchLines(workspace) {
+  workspace.addChangeListener((event) => {
+    if (event.isUiEvent) return;
+    const ids = [event.blockId, event.oldParentId, event.newParentId, ...(event.ids || [])].filter(Boolean);
+    for (const id of ids) {
+      for (let block = workspace.getBlockById(id); block; block = block.getParent()) {
+        for (const input of block.inputList) {
+          if (input.name.startsWith("PYLINE")) input.fieldRow[0].refresh();
+        }
+      }
+    }
+  });
+}
+
 function makeField(spec, words) {
   switch (spec.kind) {
+    case "var": return new FieldName(spec.default);
     case "name": return new Blockly.FieldTextInput(spec.default, nameValidator);
     case "number": return new Blockly.FieldTextInput(spec.default, numberValidator);
     case "params": return new Blockly.FieldTextInput(spec.default, paramsValidator);
@@ -101,7 +237,7 @@ class Rows {
   }
 }
 
-function lineText(template, block) {
+function fillTemplate(template, block) {
   return template.replace(/\[(\w+)\]/g, (whole, name) => {
     const value = block.getFieldValue(name);
     return value === null || value === undefined ? whole : value;
@@ -109,11 +245,8 @@ function lineText(template, block) {
 }
 
 function addLine(block, rows, template, index) {
-  if (!rows.settings.pythonLine || !template) return;
-  const name = "LINE" + index;
-  block.appendDummyInput("PYLINE" + index).appendField(
-    new Blockly.FieldLabel(lineText(template, block), "bf-python-line"), name);
-  block.bfLines.push({ name, template });
+  if (!rows.showLines || !template) return;
+  block.appendDummyInput("PYLINE" + index).appendField(new FieldPythonLine(index, template));
 }
 
 /** Builds every input of the block for its current state. */
@@ -121,7 +254,8 @@ function layout(block, def, settings, state) {
   const rows = new Rows(block, settings.words);
   rows.settings = settings;
   rows.def = def;
-  block.bfLines = [];
+  // value blocks have no line (the parent's line shows their code); Python words are the Python already
+  rows.showLines = settings.pythonLine && settings.words === "scratch" && def.kind === "statement";
   const words = def[settings.words];
 
   if (def.mutator === "if") {
@@ -159,13 +293,6 @@ function layout(block, def, settings, state) {
   for (const name of def.body || []) block.appendStatementInput(name);
 }
 
-function updateLines(block) {
-  for (const { name, template } of block.bfLines) {
-    const field = block.getField(name);
-    if (field) field.setValue(lineText(template, block));
-  }
-}
-
 /**
  * Throws away the inputs and builds them again for a new state. Children of inputs named in `remap`
  * (old name to new name; an input not named stays) are kept; the others go.
@@ -192,7 +319,7 @@ function rebuild(block, def, settings, state, remap = new Map(), strict = false)
   layout(block, def, settings, state);
   for (const [name, value] of Object.entries(fieldValues)) {
     const mapped = mapName(name);
-    const target = mapped && !/^LINE\d+$/.test(name) ? block.getField(mapped) : null;
+    const target = mapped ? block.getField(mapped) : null;
     if (target) target.setValue(value);
   }
   for (const [name, target] of kept) {
@@ -201,7 +328,6 @@ function rebuild(block, def, settings, state, remap = new Map(), strict = false)
     if (input && input.connection) input.connection.connect(target);
     else target.getSourceBlock().dispose(false);
   }
-  updateLines(block);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -351,14 +477,8 @@ function definition(def, settings) {
       }
       this.bfState = initialState(def);
       layout(this, def, settings, this.bfState);
-      if (typeof def.line === "string") this.setTooltip(lineText(def.line, this));
+      if (typeof def.line === "string") this.setTooltip(fillTemplate(def.line, this));
       if (def.mutator) this.setMutator(new Blockly.icons.MutatorIcon(MUTATOR_ITEMS[def.mutator].map((i) => PREFIX + "m_" + i), this));
-      if (settings.pythonLine) {
-        this.setOnChange((event) => {
-          const own = event.blockId === this.id || (event.ids && event.ids.includes(this.id));
-          if (own && !this.isDeadOrDying()) updateLines(this);
-        });
-      }
     },
 
     saveExtraState() {
@@ -419,13 +539,30 @@ export function registerBlocks({ words = "scratch", pythonLine = true } = {}) {
   if (words !== "scratch" && words !== "python") throw new Error(`words must be "scratch" or "python", not ${words}`);
   injectStyle();
   registerMutatorBlocks();
-  const settings = { words, pythonLine: !!pythonLine };
+  // With Python words there is never a Python line, whatever was asked for
+  const settings = { words, pythonLine: words === "scratch" && !!pythonLine };
   for (const def of BLOCKS) Blockly.Blocks[typeOf(def.type)] = definition(def, settings);
   registeredAs = settings;
   return settings;
 }
 
 export const registeredSettings = () => registeredAs;
+
+const shadowOf = (spec) => {
+  if (spec.number !== undefined) return { shadow: { type: typeOf("number"), fields: { NUM: String(spec.number) } } };
+  if (spec.text !== undefined) return { shadow: { type: typeOf("text"), fields: { TEXT: spec.text } } };
+  if (spec.name !== undefined) return { shadow: { type: typeOf("variable"), fields: { VAR: spec.name } } };
+  // a condition: a real comparison, 0 = 0, with number shadows in it
+  const zero = { shadow: { type: typeOf("number"), fields: { NUM: "0" } } };
+  return { block: { type: typeOf("compare"), inputs: { A: zero, B: zero } } };
+};
+
+/** The JSON of a block as the toolbox gives it: its slots filled with editable defaults. */
+export function toolboxBlock(id) {
+  const inputs = {};
+  for (const [slot, spec] of Object.entries(DEFAULTS[id] || {})) inputs[slot] = shadowOf(spec);
+  return Object.keys(inputs).length ? { type: typeOf(id), inputs } : { type: typeOf(id) };
+}
 
 /** A toolbox with every block, by category. */
 export function toolbox() {
@@ -435,7 +572,7 @@ export function toolbox() {
       kind: "category",
       name: cat.name,
       colour: cat.colour,
-      contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => ({ kind: "block", type: typeOf(b.type) })),
+      contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => ({ kind: "block", ...toolboxBlock(b.type) })),
     })),
   };
 }
