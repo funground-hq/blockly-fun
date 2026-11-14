@@ -2,4 +2,4 @@
 // and its ES module only for bundlers and Node. The page loads the classic script; this module gives the editor's
 // `import * as Blockly from "blockly"` the names it uses (see the import map in index.html).
 const Blockly = globalThis.Blockly;
-export const { Blocks, CodeGenerator, Events, FieldDropdown, FieldLabel, FieldTextInput, Workspace, icons, inject, serialization } = Blockly;
+export const { Blocks, CodeGenerator, dialog, Events, FieldDropdown, FieldLabel, FieldTextInput, Workspace, icons, inject, serialization } = Blockly;

@@ -1,6 +1,7 @@
 // The editor in a page: blocks on the left, the Python they make on the right, and the two settings as toggles.
 
 import { createBlocksEditor } from "../editor/index.js";
+import { toolboxBlock } from "../editor/blocks/register.js";
 
 const SAMPLE = {
   blocks: {
@@ -41,7 +42,11 @@ const editor = createBlocksEditor({
 });
 editor.load(SAMPLE);
 
-const apply = () => editor.settings({ words: words.value, pythonLine: pythonLine.checked });
+// With Python words there is no Python line, so its switch is off the table
+const apply = () => {
+  pythonLine.disabled = words.value === "python";
+  editor.settings({ words: words.value, pythonLine: pythonLine.checked });
+};
 words.addEventListener("change", apply);
 pythonLine.addEventListener("change", apply);
 
@@ -49,10 +54,27 @@ pythonLine.addEventListener("change", apply);
 window.bfEditor = editor;
 document.getElementById("status").textContent = "ready";
 
-// #selftest: changes both settings, checks the Python stays the same, and puts every block on the page (for a
-// headless check; see tools/). The result is written into #status.
-if (location.hash.startsWith("#selftest")) {
-  const Blockly = window.Blockly;
+// #toolbox-sample and #toolbox-sample-python: a "repeat" and an "if" fresh from the toolbox, with their defaults.
+// #selftest: for a headless check (see tools/serve.py). Changes both settings and checks the Python stays the same,
+// checks every block of the toolbox has an editable default in every value slot, edits one and watches the Python line
+// follow, puts every block on the page, and opens the gear. The result is written into #status.
+const hash = location.hash;
+const Blockly = window.Blockly;
+const status = document.getElementById("status");
+
+if (hash.startsWith("#toolbox-sample")) {
+  if (hash === "#toolbox-sample-python") {
+    words.value = "python";
+    apply();
+  }
+  editor.workspace.clear();
+  [["repeat", 20, 20], ["if", 20, 150], ["set", 20, 330]].forEach(([id, x, y]) => {
+    Blockly.serialization.blocks.append({ ...toolboxBlock(id), x, y }, editor.workspace);
+  });
+  status.textContent = "toolbox sample";
+}
+
+if (hash.startsWith("#selftest")) {
   const problems = [];
   window.addEventListener("error", (e) => problems.push(String(e.message)));
   const before = editor.toPython();
@@ -62,17 +84,57 @@ if (location.hash.startsWith("#selftest")) {
     if (editor.toPython() !== before) problems.push(`Python changed under ${JSON.stringify(s)}`);
   }
   const ws = editor.workspace;
-  if (location.hash === "#selftest-python") editor.settings({ words: "python", pythonLine: true });
-  const wanted = Object.keys(Blockly.Blocks).filter((t) => t.startsWith("bf_") && !t.startsWith("bf_m_"));
-  wanted.forEach((type, i) => {
+  const types = Object.keys(Blockly.Blocks).filter((t) => t.startsWith("bf_") && !t.startsWith("bf_m_"));
+
+  // every value slot of every toolbox block holds a block, a shadow's fields can be edited
+  const noDefault = new Set(["bf_call", "bf_call_value", "bf_method", "bf_method_value"]); // their slots come with the gear
+  const allDescendants = (b) => [b, ...b.getChildren(false).flatMap(allDescendants)];
+  ws.clear();
+  types.forEach((type, i) => {
     try {
-      Blockly.serialization.blocks.append({ type, x: 420 + Math.floor(i / 14) * 330, y: 20 + (i % 14) * 60 }, editor.workspace);
+      const block = Blockly.serialization.blocks.append({
+        ...toolboxBlock(type.slice(3)), x: 420 + Math.floor(i / 14) * 330, y: 20 + (i % 14) * 60,
+      }, ws);
+      for (const b of allDescendants(block)) {
+        for (const input of b.inputList) {
+          if (input.type !== Blockly.inputs.inputTypes.VALUE) continue;
+          const target = input.connection.targetBlock();
+          if (!target) problems.push(`${b.type}.${input.name} is empty in the toolbox`);
+          else if (target.isShadow()) {
+            for (const f of target.inputList.flatMap((x) => x.fieldRow)) {
+              if (f.name && !f.EDITABLE) problems.push(`${target.type}.${f.name} cannot be edited`);
+            }
+          }
+        }
+      }
     } catch (e) {
       problems.push(`${type}: ${e.message}`);
     }
   });
+  void noDefault;
+
+  // editing a shadow changes the block's Python line (Blockly draws a moment later, so look a moment later)
+  const lineCheck = () => {
+    try {
+      Blockly.serialization.blocks.append({ ...toolboxBlock("repeat"), x: 20, y: 200 }, editor.workspace);
+      const repeat = editor.workspace.getBlocksByType("bf_repeat")[0];
+      const line = repeat.inputList.flatMap((x) => x.fieldRow).find((f) => f.lineText);
+      repeat.getInputTargetBlock("N").setFieldValue("7", "NUM");
+      if (!line.lineText().includes("range(7)")) problems.push("the Python line did not follow: " + line.lineText());
+      Blockly.renderManagement.finishQueuedRenders().then(() => {
+        const shown = repeat.getSvgRoot().textContent;
+        if (!shown.includes("range(7)")) problems.push("the Python line is not on the screen: " + shown);
+        report();
+      });
+    } catch (e) {
+      problems.push("line: " + e.message);
+    }
+  };
+
   // the gear, on the screen: open it, add an item, compose
   try {
+    editor.workspace.clear();
+    Blockly.serialization.blocks.append({ ...toolboxBlock("say"), x: 20, y: 20 }, editor.workspace);
     const say = editor.workspace.getBlocksByType("bf_say")[0];
     const root = say.decompose(editor.workspace);
     const extra = editor.workspace.newBlock("bf_m_item");
@@ -82,7 +144,7 @@ if (location.hash.startsWith("#selftest")) {
     last.nextConnection.connect(extra.previousConnection);
     say.compose(root);
     root.dispose(false);
-    if (say.saveExtraState().items !== 3) problems.push("the gear did not add an item");
+    if (say.saveExtraState().items !== 2) problems.push("the gear did not add an item");
     const icon = say.getIcon(Blockly.icons.MutatorIcon.TYPE);
     icon.setBubbleVisible(true).then(() => {
       if (!icon.bubbleIsVisible()) problems.push("the gear bubble did not open");
@@ -90,5 +152,9 @@ if (location.hash.startsWith("#selftest")) {
   } catch (e) {
     problems.push("gear: " + e.message);
   }
-  document.getElementById("status").textContent = problems.length ? "PROBLEMS: " + problems.join("; ") : `selftest ok, ${wanted.length} blocks`;
+  const report = () => {
+    status.textContent = problems.length ? "PROBLEMS: " + problems.join("; ") : `selftest ok, ${types.length} blocks`;
+  };
+  report();
+  setTimeout(lineCheck, 300);
 }
