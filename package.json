@@ -1,0 +1,19 @@
+{
+  "name": "blockly-fun",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Blocks that say Scratch's words and make real Python, and Python that opens as blocks.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/funground-hq/blockly-fun.git"
+  },
+  "homepage": "https://github.com/funground-hq/blockly-fun#readme",
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "devDependencies": {
+    "blockly": "13.4.0"
+  }
+}
