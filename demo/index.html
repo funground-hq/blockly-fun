@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>blockly-fun: blocks to Python (phase A)</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; gap: 1.5rem; align-items: center; padding: .5rem 1rem; background: #f0f0f0; border-bottom: 1px solid #ccc; }
+    header h1 { font-size: 1rem; margin: 0; }
+    main { flex: 1; display: grid; grid-template-columns: 1fr 24rem; min-height: 0; }
+    #blocks { min-height: 0; position: relative; }
+    #python { margin: 0; padding: 1rem; background: #1e1e1e; color: #e6e6e6; font: 14px/1.4 monospace; overflow: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>blockly-fun</h1>
+    <label>Words
+      <select id="words">
+        <option value="scratch">Scratch</option>
+        <option value="python">Python</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="pythonLine" checked> Python line</label>
+    <span id="status"></span>
+  </header>
+  <main>
+    <div id="blocks"></div>
+    <pre id="python" aria-label="The Python these blocks make" tabindex="0"></pre>
+  </main>
+  <script src="../node_modules/blockly/blockly_compressed.js"></script>
+  <script src="../node_modules/blockly/msg/en.js"></script>
+  <script type="importmap">{"imports": {"blockly": "./blockly-global.js"}}</script>
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>
