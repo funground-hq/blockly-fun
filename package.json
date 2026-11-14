@@ -11,7 +11,7 @@
   },
   "homepage": "https://github.com/funground-hq/blockly-fun#readme",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test \"tests/*.test.js\""
   },
   "devDependencies": {
     "blockly": "13.4.0"
