@@ -1,0 +1,245 @@
+{
+ "blocks": {
+  "languageVersion": 0,
+  "blocks": [
+   {
+    "type": "bf_def",
+    "fields": {
+     "NAME": "greet",
+     "PARAMS": "name, times"
+    },
+    "inputs": {
+     "DO": {
+      "block": {
+       "type": "bf_count",
+       "fields": {
+        "VAR": "i"
+       },
+       "inputs": {
+        "B": {
+         "block": {
+          "type": "bf_variable",
+          "fields": {
+           "VAR": "times"
+          }
+         }
+        },
+        "DO": {
+         "block": {
+          "type": "bf_say",
+          "extraState": {
+           "items": 1
+          },
+          "inputs": {
+           "ARG0": {
+            "block": {
+             "type": "bf_arith",
+             "fields": {
+              "OP": "+"
+             },
+             "inputs": {
+              "A": {
+               "block": {
+                "type": "bf_arith",
+                "fields": {
+                 "OP": "+"
+                },
+                "inputs": {
+                 "A": {
+                  "shadow": {
+                   "type": "bf_text",
+                   "fields": {
+                    "TEXT": "Hello, "
+                   }
+                  }
+                 },
+                 "B": {
+                  "block": {
+                   "type": "bf_variable",
+                   "fields": {
+                    "VAR": "name"
+                   }
+                  }
+                 }
+                }
+               }
+              },
+              "B": {
+               "shadow": {
+                "type": "bf_text",
+                "fields": {
+                 "TEXT": "!"
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "x": 20,
+    "y": 0
+   },
+   {
+    "type": "bf_def",
+    "fields": {
+     "NAME": "square",
+     "PARAMS": "x"
+    },
+    "inputs": {
+     "DO": {
+      "block": {
+       "type": "bf_return",
+       "inputs": {
+        "VALUE": {
+         "block": {
+          "type": "bf_arith",
+          "fields": {
+           "OP": "*"
+          },
+          "inputs": {
+           "A": {
+            "block": {
+             "type": "bf_variable",
+             "fields": {
+              "VAR": "x"
+             }
+            }
+           },
+           "B": {
+            "block": {
+             "type": "bf_variable",
+             "fields": {
+              "VAR": "x"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "extraState": {
+     "blank": 1
+    },
+    "x": 20,
+    "y": 224
+   },
+   {
+    "type": "bf_own_call",
+    "extraState": {
+     "args": 2,
+     "blank": 1
+    },
+    "fields": {
+     "NAME": "greet"
+    },
+    "inputs": {
+     "ARG0": {
+      "shadow": {
+       "type": "bf_text",
+       "fields": {
+        "TEXT": "Mia"
+       }
+      }
+     },
+     "ARG1": {
+      "shadow": {
+       "type": "bf_number",
+       "fields": {
+        "NUM": "3"
+       }
+      }
+     }
+    },
+    "next": {
+     "block": {
+      "type": "bf_say",
+      "extraState": {
+       "items": 2
+      },
+      "inputs": {
+       "ARG0": {
+        "shadow": {
+         "type": "bf_text",
+         "fields": {
+          "TEXT": "5 squared is"
+         }
+        }
+       },
+       "ARG1": {
+        "block": {
+         "type": "bf_own_call_value",
+         "extraState": {
+          "args": 1
+         },
+         "fields": {
+          "NAME": "square"
+         },
+         "inputs": {
+          "ARG0": {
+           "shadow": {
+            "type": "bf_number",
+            "fields": {
+             "NUM": "5"
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "next": {
+       "block": {
+        "type": "bf_say",
+        "extraState": {
+         "items": 2
+        },
+        "inputs": {
+         "ARG0": {
+          "shadow": {
+           "type": "bf_text",
+           "fields": {
+            "TEXT": "12 squared is"
+           }
+          }
+         },
+         "ARG1": {
+          "block": {
+           "type": "bf_own_call_value",
+           "extraState": {
+            "args": 1
+           },
+           "fields": {
+            "NAME": "square"
+           },
+           "inputs": {
+            "ARG0": {
+             "shadow": {
+              "type": "bf_number",
+              "fields": {
+               "NUM": "12"
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "x": 20,
+    "y": 392
+   }
+  ]
+ }
+}

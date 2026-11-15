@@ -66,8 +66,9 @@ _NEWLINE = re.compile(r"\r\n|\r|\n")
 # Statements with blocks of their own that have a header and bodies; the other compound statements are Python code.
 _BLOCK_COMPOUND = (ast.If, ast.For, ast.While, ast.FunctionDef)
 
-# Where the stacks go on the workspace: one row of text is about one block high. Positions never change the Python,
-# only where a learner sees the blocks; the generator writes the stacks from the top down.
+# Where the stacks go on the workspace: one row of text is about one block high. Positions never change the Python
+# (the generator writes the stacks from the top down) and they are rough: blocks with a Python line are taller, so a
+# page arranges the stacks by their drawn height after loading (Blockly's cleanUp keeps their order).
 _STACK_X = 20
 _ROW_HEIGHT = 56
 

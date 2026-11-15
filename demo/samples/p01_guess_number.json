@@ -1,0 +1,290 @@
+{
+ "blocks": {
+  "languageVersion": 0,
+  "blocks": [
+   {
+    "type": "bf_set",
+    "fields": {
+     "VAR": "secret"
+    },
+    "inputs": {
+     "VALUE": {
+      "block": {
+       "type": "bf_randint",
+       "inputs": {
+        "A": {
+         "shadow": {
+          "type": "bf_number",
+          "fields": {
+           "NUM": "1"
+          }
+         }
+        },
+        "B": {
+         "shadow": {
+          "type": "bf_number",
+          "fields": {
+           "NUM": "20"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "next": {
+     "block": {
+      "type": "bf_set",
+      "fields": {
+       "VAR": "tries"
+      },
+      "inputs": {
+       "VALUE": {
+        "shadow": {
+         "type": "bf_number",
+         "fields": {
+          "NUM": "0"
+         }
+        }
+       }
+      },
+      "next": {
+       "block": {
+        "type": "bf_say",
+        "extraState": {
+         "items": 1,
+         "blank": 1
+        },
+        "inputs": {
+         "ARG0": {
+          "shadow": {
+           "type": "bf_text",
+           "fields": {
+            "TEXT": "I am thinking of a number from 1 to 20."
+           }
+          }
+         }
+        },
+        "next": {
+         "block": {
+          "type": "bf_forever",
+          "inputs": {
+           "DO": {
+            "block": {
+             "type": "bf_set",
+             "fields": {
+              "VAR": "guess"
+             },
+             "inputs": {
+              "VALUE": {
+               "block": {
+                "type": "bf_to_int",
+                "inputs": {
+                 "X": {
+                  "block": {
+                   "type": "bf_ask",
+                   "inputs": {
+                    "Q": {
+                     "shadow": {
+                      "type": "bf_text",
+                      "fields": {
+                       "TEXT": "Your guess: "
+                      }
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             },
+             "next": {
+              "block": {
+               "type": "bf_set",
+               "fields": {
+                "VAR": "tries"
+               },
+               "inputs": {
+                "VALUE": {
+                 "block": {
+                  "type": "bf_arith",
+                  "fields": {
+                   "OP": "+"
+                  },
+                  "inputs": {
+                   "A": {
+                    "block": {
+                     "type": "bf_variable",
+                     "fields": {
+                      "VAR": "tries"
+                     }
+                    }
+                   },
+                   "B": {
+                    "shadow": {
+                     "type": "bf_number",
+                     "fields": {
+                      "NUM": "1"
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               },
+               "next": {
+                "block": {
+                 "type": "bf_if",
+                 "extraState": {
+                  "elifs": 1,
+                  "else": true
+                 },
+                 "inputs": {
+                  "IF0": {
+                   "block": {
+                    "type": "bf_compare",
+                    "fields": {
+                     "OP": "<"
+                    },
+                    "inputs": {
+                     "A": {
+                      "block": {
+                       "type": "bf_variable",
+                       "fields": {
+                        "VAR": "guess"
+                       }
+                      }
+                     },
+                     "B": {
+                      "block": {
+                       "type": "bf_variable",
+                       "fields": {
+                        "VAR": "secret"
+                       }
+                      }
+                     }
+                    }
+                   }
+                  },
+                  "DO0": {
+                   "block": {
+                    "type": "bf_say",
+                    "extraState": {
+                     "items": 1
+                    },
+                    "inputs": {
+                     "ARG0": {
+                      "shadow": {
+                       "type": "bf_text",
+                       "fields": {
+                        "TEXT": "Too low!"
+                       }
+                      }
+                     }
+                    }
+                   }
+                  },
+                  "IF1": {
+                   "block": {
+                    "type": "bf_compare",
+                    "fields": {
+                     "OP": ">"
+                    },
+                    "inputs": {
+                     "A": {
+                      "block": {
+                       "type": "bf_variable",
+                       "fields": {
+                        "VAR": "guess"
+                       }
+                      }
+                     },
+                     "B": {
+                      "block": {
+                       "type": "bf_variable",
+                       "fields": {
+                        "VAR": "secret"
+                       }
+                      }
+                     }
+                    }
+                   }
+                  },
+                  "DO1": {
+                   "block": {
+                    "type": "bf_say",
+                    "extraState": {
+                     "items": 1
+                    },
+                    "inputs": {
+                     "ARG0": {
+                      "shadow": {
+                       "type": "bf_text",
+                       "fields": {
+                        "TEXT": "Too high!"
+                       }
+                      }
+                     }
+                    }
+                   }
+                  },
+                  "ELSE": {
+                   "block": {
+                    "type": "bf_say",
+                    "extraState": {
+                     "items": 3
+                    },
+                    "inputs": {
+                     "ARG0": {
+                      "shadow": {
+                       "type": "bf_text",
+                       "fields": {
+                        "TEXT": "You got it in"
+                       }
+                      }
+                     },
+                     "ARG1": {
+                      "block": {
+                       "type": "bf_variable",
+                       "fields": {
+                        "VAR": "tries"
+                       }
+                      }
+                     },
+                     "ARG2": {
+                      "shadow": {
+                       "type": "bf_text",
+                       "fields": {
+                        "TEXT": "tries!"
+                       }
+                      }
+                     }
+                    },
+                    "next": {
+                     "block": {
+                      "type": "bf_break"
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "x": 20,
+    "y": 112
+   }
+  ]
+ }
+}

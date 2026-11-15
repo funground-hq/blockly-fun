@@ -74,6 +74,17 @@ if (hash.startsWith("#toolbox-sample")) {
   status.textContent = "toolbox sample";
 }
 
+// #load=<url>: opens a workspace JSON, e.g. one written by `python -m blockly_fun` (Python in the browser is phase C).
+if (hash.startsWith("#load=")) {
+  const url = decodeURIComponent(hash.slice("#load=".length));
+  fetch(url).then((response) => response.json()).then((json) => {
+    editor.load(json.workspace ?? json);
+    // the converter's positions give the order only; Blockly stacks them by their drawn height, keeping the order
+    editor.workspace.cleanUp();
+    status.textContent = "loaded " + url;
+  }).catch((error) => { status.textContent = "PROBLEMS: " + error.message; });
+}
+
 if (hash.startsWith("#selftest")) {
   const problems = [];
   window.addEventListener("error", (e) => problems.push(String(e.message)));
