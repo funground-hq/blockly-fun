@@ -233,6 +233,30 @@ test("imports: once each, in the order math, random, time, only when used", () =
   assert.equal(toPython(program(s.set("random", n(1)))), "random = 1\n");
 });
 
+test("imports of funground's libraries: after the modules and `import funground as f`, one line each, alphabetical", () => {
+  assert.equal(toPython(program(s.method(x("sound"), "melody", t("c d e")))),
+    "from funground import sound\n\nsound.melody(\"c d e\")\n");
+  assert.equal(
+    toPython(program(s.method(x("sound"), "beep"), s.set("a", v.method(x("ml"), "go")), s.set("b", v.randint(1, 2)),
+      s.method(x("camera"), "photo"), s.method(x("sangeet"), "play"))),
+    "import random\n\nfrom funground import camera\nfrom funground import ml\nfrom funground import sangeet\n" +
+    "from funground import sound\n\nsound.beep()\na = ml.go()\nb = random.randint(1, 2)\ncamera.photo()\nsangeet.play()\n");
+  // after the modules and `import funground as f`, the sketch's own ending kept
+  assert.equal(
+    toPython(program(s.set("x", v.randint(1, 2)), s.method(x("sound"), "beep"), s.circle(1, 2, 3))),
+    "import random\n\nimport funground as f\nfrom funground import sound\n\nx = random.randint(1, 2)\nsound.beep()\n" +
+    "f.circle(1, 2, 3)\nf.show()\n");
+  // a name the program does not call as a library, or already imports in Python code, brings no line
+  assert.equal(toPython(program(s.set("sound", n(1)))), "sound = 1\n");
+  assert.equal(toPython(program(s.method(x("robot"), "sound"))), "robot.sound()\n");
+  for (const line of ["from funground import sound", "from funground import ml, sound", "from funground import sound as s",
+    "from funground import (ml,\n    sound)", "from funground import sound  # play", "from funground import *"]) {
+    assert.equal(toPython(program(s.code(line), s.method(x("sound"), "beep"))), `${line}\nsound.beep()\n`, line);
+  }
+  assert.equal(toPython(program(s.code("from funground import ml"), s.method(x("sound"), "beep"))),
+    "from funground import sound\n\nfrom funground import ml\nsound.beep()\n");
+});
+
 test("a general call that equals a named block's form makes the same text", () => {
   const same = (named, general) => assert.equal(toPython(program(s.set("r", named))), toPython(program(s.set("r", general))));
   same(v.round(x("a")), v.call("round", x("a")));

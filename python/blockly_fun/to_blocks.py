@@ -37,6 +37,9 @@ PREFIX = "bf_"
 
 # Modules a named block needs; the generator writes their imports at the top itself.
 IMPORT_ORDER = ("math", "random", "time")
+# funground's libraries, written `from funground import sound` (python.js LIBRARIES): alphabetical, one line each,
+# after `import funground as f`.
+LIBRARIES = ("camera", "ml", "sangeet", "sound")
 
 # Phase C+ (BF-D-022): funground's drawing kit, for a program that starts with `import funground as f`.
 # (method, number of arguments) -> (block, its slots in order)
@@ -231,8 +234,9 @@ class _Comment:
 
 
 class _Converter:
-    def __init__(self, source: str):
+    def __init__(self, source: str, library_limit: int | None = None):
         self.source = source
+        self.library_limit = library_limit  # how many `from funground import name` lines may be taken in (None: all)
         self.lines = _NEWLINE.split(source)
         try:
             self.tree = ast.parse(source)
@@ -260,6 +264,11 @@ class _Converter:
         self.own_functions = {node.name for node in self.tree.body
                               if isinstance(node, ast.FunctionDef) and self._is_simple_def(node)}
         self.kept_whole = self._top_statements_kept_whole()
+        # The libraries the program imports from funground, anywhere (`*` is all of them). The generator writes an import
+        # for a call on `sound` only when the program has one, so a `sound` that is a variable of its own stays one.
+        named = {alias.name for node in ast.walk(self.tree) if isinstance(node, ast.ImportFrom)
+                 and node.module == "funground" and node.level == 0 for alias in node.names}
+        self.library_imports = set(LIBRARIES) if "*" in named else named & set(LIBRARIES)
         self.indent = ""  # the indentation of the statement being converted (its value's lines are written under it)
         self.funground = False  # the program starts with `import funground as f`: the drawing kit's blocks apply
         self.hats: list[tuple[dict, ast.FunctionDef, list[str]]] = []  # each hat made, its def, its global names
@@ -336,6 +345,22 @@ class _Converter:
             else:
                 stacks[-1].append(piece)
 
+        # A `from funground import name` line is taken in only if the generator writes it back as it stands (_library_line)
+        # and the lines above it are all taken: the unused imports kept as Python code go above what the generator
+        # writes, so they would change places with it. The lines left out are read again as ordinary statements.
+        libraries = [node for node in imports if isinstance(node, ast.ImportFrom)]
+        if libraries:
+            keep = len(libraries)
+            if any(node.names[0].name not in self.needs for node in imports if isinstance(node, ast.Import)):
+                keep = 0
+            else:
+                keep = next((i for i, node in enumerate(libraries) if node.names[0].name not in self.needs), keep)
+            # the generator writes one blank line after the imports, so the source must have one there
+            while keep and self.lines[libraries[keep - 1].end_lineno].strip() != "":
+                keep -= 1
+            if keep < len(libraries):
+                return _Converter(self.source, library_limit=keep).workspace()
+
         # An import no block needs is kept as written, as Python code at the top.
         unused = [node for node in imports if node.names[0].name not in self.needs]
         if unused:
@@ -361,18 +386,51 @@ class _Converter:
             tops.append(top)
         return {"blocks": {"languageVersion": 0, "blocks": tops}}
 
-    def _taken_imports(self) -> list[ast.Import]:
-        """The `import math` / `random` / `time` and `import funground as f` lines at the very top: the generator
-        writes these itself."""
-        taken = []
+    def _taken_imports(self) -> list[ast.Import | ast.ImportFrom]:
+        """The `import math` / `random` / `time`, `import funground as f` and `from funground import sound` (and
+        `camera`, `ml`, `sangeet`) lines at the very top: the generator writes these itself."""
+        taken: list[ast.Import | ast.ImportFrom] = []
+        rank = -1   # of the last line taken, in the order the generator writes them: modules, funground, libraries
+        ordered = True   # every line taken so far is in that order, so a library line can follow
+        libraries = 0
         for node in self.tree.body:
-            if not (isinstance(node, ast.Import) and len(node.names) == 1 and node.lineno not in self.comments):
+            if isinstance(node, ast.ImportFrom):
+                name = self._library_line(node, taken[-1] if taken else None, rank) if ordered else None
+                if name is None or libraries == self.library_limit:
+                    break
+                here, libraries = len(IMPORT_ORDER) + 1 + LIBRARIES.index(name), libraries + 1
+            elif isinstance(node, ast.Import) and len(node.names) == 1 and node.lineno not in self.comments and not libraries:
+                alias = node.names[0]
+                if alias.asname is None and alias.name in IMPORT_ORDER:
+                    here = IMPORT_ORDER.index(alias.name)
+                elif (alias.name, alias.asname) == ("funground", "f"):
+                    here = len(IMPORT_ORDER)
+                else:
+                    break
+            else:
                 break
-            alias = node.names[0]
-            if not (alias.asname is None and alias.name in IMPORT_ORDER or (alias.name, alias.asname) == ("funground", "f")):
-                break
+            ordered, rank = ordered and here > rank, here
             taken.append(node)
         return taken
+
+    def _library_line(self, node: ast.ImportFrom, previous: ast.stmt | None, rank: int) -> str | None:
+        """The library's name if this line is exactly what the generator writes at this place: alone on its line,
+        with no comment, the libraries in alphabetical order, one blank line after the standard library's imports,
+        none after `import funground as f` or another library, and nothing above it but those. Otherwise None."""
+        names = node.names
+        if not (node.module == "funground" and node.level == 0 and len(names) == 1 and names[0].asname is None
+                and names[0].name in LIBRARIES):
+            return None
+        name = names[0].name
+        if self.lines[node.lineno - 1] != f"from funground import {name}" or node.end_lineno != node.lineno:
+            return None
+        if rank >= len(IMPORT_ORDER) + 1 + LIBRARIES.index(name):
+            return None   # out of order, or a second copy
+        blanks = 1 if rank < len(IMPORT_ORDER) and previous is not None else 0
+        gap = range((previous.end_lineno if previous else 0) + 1, node.lineno)
+        if len(gap) != blanks or any(self.lines[row - 1].strip() for row in gap):
+            return None
+        return name
 
     # -- a sketch (phase C+, BF-D-022) ----------------------------------------------------------------------------
 
@@ -794,9 +852,12 @@ class _Converter:
         fields = {"NAME": name, **{f"KW{i}": key for i, (key, _) in enumerate(parts) if key is not None}}
         inputs = {}
         if target is not None:
-            if isinstance(target, ast.Name) and target.id in IMPORT_ORDER:
+            if isinstance(target, ast.Name) and (target.id in IMPORT_ORDER or target.id in self.library_imports):
                 self.needs.add(target.id)
-            inputs.update(self._inputs(OBJ=target))
+            if isinstance(target, ast.Name) and target.id in LIBRARIES and target.id not in self.library_imports:
+                inputs["OBJ"] = _slot(self._code_value(target))   # no import: not funground's library, whatever it is
+            else:
+                inputs.update(self._inputs(OBJ=target))
         inputs.update(self._inputs(**{f"ARG{i}": value for i, (_, value) in enumerate(parts)}))
         extra = {"args": ["k" if key is not None else "p" for key, _ in parts]}
         return _block(kind, fields=fields, extra=extra, inputs=inputs)

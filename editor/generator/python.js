@@ -35,6 +35,8 @@ export const ORDER = {
 const BELOW_RELATIONAL = ORDER.RELATIONAL - 1;
 
 const IMPORT_ORDER = ["math", "random", "time"];
+// funground's libraries, imported as `from funground import sound`; the lines are written in this (alphabetical) order
+const LIBRARIES = ["camera", "ml", "sangeet", "sound"];
 
 class PythonGenerator extends Blockly.CodeGenerator {
   constructor() {
@@ -125,7 +127,9 @@ class PythonGenerator extends Blockly.CodeGenerator {
     // the standard library's modules, then funground (a group of its own, as PEP 8 and funground's examples have it)
     const groups = [
       IMPORT_ORDER.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `import ${m}\n`).join(""),
-      this.modules.has("funground") && !this.imported?.has("funground") ? "import funground as f\n" : "",
+      // `import funground as f`, then one `from funground import name` for each library the program calls
+      (this.modules.has("funground") && !this.imported?.has("funground") ? "import funground as f\n" : "")
+        + LIBRARIES.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `from funground import ${m}\n`).join(""),
     ].filter(Boolean);
     let text = groups.length ? groups.join("\n") + "\n" + code : code.replace(/^\n+/, "");
     text = text.replace(/\n+$/, "") + (text.trim() === "" ? "" : "\n");
@@ -153,6 +157,15 @@ function importedByCode(workspace) {
         if (IMPORT_ORDER.includes(name)) found.add(name);
       }
       if (/^\s*import funground as f\s*(#.*)?$/.test(line)) found.add("funground");
+    }
+    // from funground import ml, sound / sound as s / (ml,\n sound) / *: each library named, whatever it is renamed to
+    const text = String(block.getFieldValue("TEXT") ?? "");
+    for (const match of text.matchAll(/^[ \t]*from[ \t]+funground[ \t]+import[ \t]+(\([^)]*\)|[^\n]*)/gm)) {
+      for (const part of match[1].replace(/#[^\n]*/g, "").replace(/[()]/g, "").split(",")) {
+        const name = part.trim().split(/\s+/)[0];
+        if (LIBRARIES.includes(name)) found.add(name);
+        if (name === "*") LIBRARIES.forEach((library) => found.add(library));
+      }
     }
   }
   return found;
@@ -373,7 +386,7 @@ drawing("write", "text", ["TEXT", "X", "Y"]);
 define("sketch_value", (b) => { g.needs("funground"); return [`f.${b.getFieldValue("WHAT")}`, ORDER.CALL]; });
 
 // Calling anything else ----------------------------------------------------------------------------------------
-const MODULES = new Set(IMPORT_ORDER);
+const MODULES = new Set([...IMPORT_ORDER, ...LIBRARIES]);
 function argumentList(b) {
   return b.bfState.args.map((kind, i) => {
     const value = g.need(b, "ARG" + i);

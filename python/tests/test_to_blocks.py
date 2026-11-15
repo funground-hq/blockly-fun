@@ -171,6 +171,40 @@ def test_imports_a_block_needs_are_taken_in_and_others_kept():
     assert kinds("import os\n\nx = 1\n") == ["code", "set"]
 
 
+def test_a_library_import_is_taken_in_only_when_the_generator_writes_it_back_as_it_stands():
+    call = "sound.melody(\"c d e\")\n"
+    assert kinds("from funground import sound\n\n" + call) == ["method"]
+    source = "import random\n\nfrom funground import ml\nfrom funground import sound\n\nml.a()\nsound.b()\nx = random.randint(1, 6)\n"
+    assert kinds(source) == ["method", "method", "set"]
+    both = "import funground as f\nfrom funground import sound\n\nf.circle(1, 2, 3)\nsound.b()\nf.show()\n"
+    assert kinds(both) == ["circle", "method"]
+    # kept as written, as Python code: two names on a line, another order, a comment, a rename, a second copy,
+    # a blank line missing or in the wrong place, an import the program does not use (and the lines after it)
+    for source in [
+        "from funground import ml, sound\n\nml.a()\nsound.b()\n",
+        "from funground import sound\nfrom funground import ml\n\nml.a()\nsound.b()\n",
+        "# mine\nfrom funground import sound\n\n" + call,
+        "from funground import sound  # play\n\n" + call,
+        "from funground import sound as s\n\ns.b()\n",
+        "from funground import sound\nfrom funground import sound\n\n" + call,
+        "from funground import sound\n" + call,
+        "from funground import sound\n# play\n" + call,
+        "import random\nfrom funground import sound\n\n" + call,
+        "from funground import sound\n\nfrom funground import ml\n\nml.a()\n" + call,
+        "from funground import ml\nfrom funground import sound\n\n" + call,
+        "from funground import sound\n\nx = 1\n",
+        "import math\n\nfrom funground import sound\n\n" + call,
+    ]:
+        assert "code" in kinds(source), source
+    # a library name the program does not import is its own: the call is a block, its object Python code, so no import is made
+    play = list(chain(first("sound = load()\nsound.play()\n")))[1]
+    assert (play["type"], slot(play, "OBJ")["type"]) == ("bf_method", "bf_code_value")
+    # an unused last line is left out, and so is the line above it: no blank line would follow it
+    assert kinds("from funground import ml\nfrom funground import sound\n\nml.a()\nx = 1\n") == ["code", "code", "method", "set"]
+    # with a blank line after it the line above stays taken in
+    assert kinds("from funground import ml\n\nfrom funground import sound\n\nml.a()\nx = 1\n") == ["code", "method", "set"]
+
+
 def test_each_def_is_a_stack_of_its_own_in_the_order_written():
     source = "x = 1\n\ndef f():\n    pass\n\ny = 2\nz = 3\n"
     stacks = tops(source)

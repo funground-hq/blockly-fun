@@ -35,4 +35,26 @@ export const SNIPPETS = [
   "def f():\n    \"\"\"Doc\nnot indented\"\"\"\n    return 1\n",
   "\"\"\"A docstring first.\"\"\"\n\nimport math\n\nx = math.sqrt(2)\n",
   "import os, time\n\ntime.sleep(1)\n",
+  // funground's libraries, `from funground import sound` (BF-4): taken in only when it is what the generator writes
+  "from funground import sound\n\nsound.melody(\"c d e\")\n",
+  "import random\n\nimport funground as f\nfrom funground import ml\nfrom funground import sound\n\nf.circle(1, 2, 3)\nml.go(1)\nsound.beep(2)\nx = random.randint(1, 6)\nf.show()\n",
+  "from funground import camera\nfrom funground import ml\nfrom funground import sangeet\nfrom funground import sound\n\n\ncamera.a()\nml.b()\nsangeet.c()\nsound.d()\n",
+  // ... and kept as written otherwise: two names on a line, another order, a comment, a rename, an unused import, a copy
+  "from funground import ml, sound\n\nml.a()\nsound.b()\n",
+  "from funground import sound\nfrom funground import ml\n\nml.a()\nsound.b()\n",
+  "# my sounds\nfrom funground import sound\n\nsound.b()\n",
+  "from funground import sound  # play\n\nsound.b()\n",
+  "from funground import sound as s\n\ns.b()\n",
+  "from funground import sound\n\nx = 1\n",
+  "from funground import ml\nfrom funground import sound\n\nsound.b()\n",
+  "from funground import sound\nfrom funground import sound\n\nsound.b()\n",
+  "from funground import sound\nsound.b()\n",
+  "from funground import sound\n# play\nsound.b()\n",
+  "import math\n\nfrom funground import sound\n\nsound.b()\n",
+  "\"\"\"My sounds.\"\"\"\nfrom funground import sound\n\nsound.b()\n",
+  "from funground import sound\n\nfrom funground import ml\n\nml.a()\nsound.b()\n",
+  // a call on a name that is the program's own, or funground's through `*`: no line is added
+  "sound = load()\nsound.play()\n",
+  "from funground import *\n\nsound.melody(\"c\")\n",
+  "def f(sound):\n    sound.play()\n",
 ];
