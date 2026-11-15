@@ -257,6 +257,26 @@ test("imports of funground's libraries: after the modules and `import funground 
     "from funground import sound\n\nfrom funground import ml\nsound.beep()\n");
 });
 
+test("a header, the first stack of comments and a docstring, is written above the imports (BF-7)", () => {
+  const roll = () => s.set("x", v.randint(1, 6));
+  assert.equal(toPython(program([s.code('"""A."""')], [roll()])), '"""A."""\nimport random\n\nx = random.randint(1, 6)\n');
+  assert.equal(toPython(program([s.code("# A."), s.code("# B.").blank(1)], [roll().blank(1)])),
+    "# A.\n\n# B.\nimport random\n\n\nx = random.randint(1, 6)\n");
+  assert.equal(toPython(program([s.code("# A."), s.code('"""B."""'), s.code("# C.")], [roll()])),
+    '# A.\n"""B."""\n# C.\nimport random\n\nx = random.randint(1, 6)\n');
+  assert.equal(toPython(program([s.code('"""A."""')], [s.method(x("sound"), "beep")])),
+    '"""A."""\nfrom funground import sound\n\nsound.beep()\n');
+  // with no import to write the code follows the header as it stands
+  assert.equal(toPython(program([s.code('"""A."""')], [s.set("x", n(1)).blank(1)])), '"""A."""\n\nx = 1\n');
+  // a first stack that holds anything else starts the program, the imports above it
+  assert.equal(toPython(program([s.code("# A."), roll()])), "import random\n\n# A.\nx = random.randint(1, 6)\n");
+  assert.equal(toPython(program([s.code('"A" "B"')], [roll()])),
+    'import random\n\n"A" "B"\nx = random.randint(1, 6)\n');
+  // a string that is a call is not a docstring
+  assert.equal(toPython(program([s.code('"{}".format(random.random())')], [roll()])),
+    'import random\n\n"{}".format(random.random())\nx = random.randint(1, 6)\n');
+});
+
 test("a general call that equals a named block's form makes the same text", () => {
   const same = (named, general) => assert.equal(toPython(program(s.set("r", named))), toPython(program(s.set("r", general))));
   same(v.round(x("a")), v.call("round", x("a")));

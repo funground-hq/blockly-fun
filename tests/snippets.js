@@ -57,4 +57,26 @@ export const SNIPPETS = [
   "sound = load()\nsound.play()\n",
   "from funground import *\n\nsound.melody(\"c\")\n",
   "def f(sound):\n    sound.play()\n",
+  // imports right under a header, a docstring and/or comments, are taken in (BF-7)
+  "\"\"\"A program.\"\"\"\nimport random\n\nx = random.randint(1, 6)\n",
+  "# A program.\n# By me.\nimport random\n\nx = random.randint(1, 6)\n",
+  "# By me.\n\"\"\"A program.\n\nIn two parts.\"\"\"\n# More.\nimport math\nimport random\n\nx = math.sqrt(random.random())\n",
+  "# Before.\n\"\"\"A program.\"\"\"\nimport random\n\n# Roll.\nx = random.randint(1, 6)\n",
+  "\"\"\"A program.\"\"\"\nimport random\n\n\ndef roll():\n    return random.randint(1, 6)\n",
+  "\"\"\"A program.\"\"\"\nfrom funground import sound\n\nsound.melody(\"c d e\")\n",
+  "\"\"\"A sketch.\"\"\"\nimport funground as f\nfrom funground import sound\n\nf.circle(1, 2, 3)\nsound.beep(2)\nf.show()\n",
+  "\"\"\"A sketch.\"\"\"\nimport funground as f\n\n\ndef setup():\n    f.size(100, 100)\n\n\ndef draw():\n    f.circle(1, 2, 3)\n\n\nf.run()\n",
+  // ... and kept as written otherwise: a blank line or two under the header, an import nothing uses, a note after the
+  // docstring, two strings, a string that is a call, a comment alone before a block the generator starts a stack with
+  "\"\"\"A program.\"\"\"\n\n\nimport random\n\nx = random.randint(1, 6)\n",
+  "\"\"\"A program.\"\"\"\n\nimport random\n\nx = random.randint(1, 6)\n",
+  "# A program.\n\nimport random\n\nx = random.randint(1, 6)\n",
+  "\"\"\"A program.\"\"\"\nimport random\n\nx = 1\n",
+  "\"\"\"A program.\"\"\"  # note\nimport random\n\nx = random.randint(1, 6)\n",
+  "\"A\" \"B\"\nimport random\n\nx = random.randint(1, 6)\n",
+  "\"{}\".format(1)\nimport random\n\nx = random.randint(1, 6)\n",
+  "\"\"\"A.\"\"\"\n\"\"\"B.\"\"\"\nimport random\n\nx = random.randint(1, 6)\n",
+  "import random\n\n# Roll.\n\ndef roll():\n    return random.randint(1, 6)\n",
+  // no header: as before
+  "import random\n\n# Roll.\nx = random.randint(1, 6)\n",
 ];

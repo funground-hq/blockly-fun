@@ -55,6 +55,29 @@ _DRAWING = {
 }
 _SKETCH_VALUES = ("mouse_x", "mouse_y", "width", "height", "frame_count")
 _HATS = {"setup": "sketch_start", "draw": "sketch_frame"}
+# A program's header (BF-7): the first stack, when it holds nothing but comments and one docstring. The generator
+# writes it above the imports it writes. python.js (headerStack) has the same two tests, so the two agree on it.
+_STRING_STATEMENT = re.compile(
+    r"""[rRuU]?(?:"{3}(?:[^"\\]|\\[\s\S]|"(?!""))*"{3}|'{3}(?:[^'\\]|\\[\s\S]|'(?!''))*'{3}"""
+    r"""|"(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*')""")
+
+
+def _is_header(blocks: list[dict]) -> bool:
+    """Whether the generator takes these blocks, a stack, for a header: "Python code" blocks of comment lines and
+    at most one string (the docstring)."""
+    strings = 0
+    for block in blocks:
+        text = block.get("fields", {}).get("TEXT", "")
+        if block["type"] != PREFIX + "code" or not text.strip():
+            return False
+        if all(line.lstrip().startswith("#") for line in text.split("\n")):
+            continue
+        strings += 1
+        if strings > 1 or not _STRING_STATEMENT.fullmatch(text):
+            return False
+    return True
+
+
 _TOP_BLOCKS = {"bf_def", "bf_sketch_start", "bf_sketch_frame"}   # each a stack of its own (BF-D-013)
 _KIT = {PREFIX + kind for kind in (*_HATS.values(), *(kind for kind, _ in _DRAWING.values()), "sketch_value")}
 
@@ -234,8 +257,9 @@ class _Comment:
 
 
 class _Converter:
-    def __init__(self, source: str, library_limit: int | None = None):
+    def __init__(self, source: str, library_limit: int | None = None, take_imports: bool = True):
         self.source = source
+        self.take_imports = take_imports  # False: every import stays as written (a header the generator would not keep)
         self.library_limit = library_limit  # how many `from funground import name` lines may be taken in (None: all)
         self.lines = _NEWLINE.split(source)
         try:
@@ -309,17 +333,26 @@ class _Converter:
     # -- the program --------------------------------------------------------------------------------------------
 
     def workspace(self) -> dict:
-        imports = self._taken_imports()
-        # Imports below a comment (a file's header) stay as written, so the comment stays above them.
-        if imports and any(row < imports[0].lineno for row in self.comments):
-            imports = []
+        imports = self._taken_imports() if self.take_imports else []
+        # Imports after a header (a docstring and/or comments) are taken in too (BF-7), when the generator would write
+        # the text back as it stands: the first import on the line under the header, as 156 of the 183 examples with a
+        # header and an import have it, and all 143 that end in a docstring.
+        if imports:
+            above = self._last_row_above(imports[0])
+            if above and imports[0].lineno - above != 1:
+                imports = []
+        skip = 1 if self._docstring() is not None else 0
         # The kit's blocks apply wherever the program imports funground as f at the top level (below a docstring
         # too); the generator writes the import and the ending only when it took the import in.
         self.funground = any(isinstance(node, ast.Import) and len(node.names) == 1
                              and (node.names[0].name, node.names[0].asname) == ("funground", "f") for node in self.tree.body)
-        statements = self.tree.body[len(imports):]
+        statements = self.tree.body[:skip] + self.tree.body[skip + len(imports):]
         pieces = self._statements(statements, anchor=0, limit=len(self.lines), top=True)
         self._check_hats([block for block, _ in pieces])
+        # The header is the pieces above the first import: a stack of its own, so the generator can tell it (BF-7).
+        header = 0
+        while imports and header < len(pieces) and pieces[header][1] < imports[0].lineno:
+            header += 1
         if not any(block["type"] in _KIT for piece, _ in pieces for block in _walk(piece)):
             self.needs.discard("funground")   # a hat converted again as a def leaves nothing of the kit
 
@@ -339,8 +372,9 @@ class _Converter:
 
         # Each "make a block" and each hat is a stack of its own; the statements between them are a stack (BF-D-013).
         stacks: list[list[tuple[dict, int]]] = []
-        for piece in pieces:
-            if piece[0]["type"] in _TOP_BLOCKS or not stacks or stacks[-1][0][0]["type"] in _TOP_BLOCKS:
+        for index, piece in enumerate(pieces):
+            if (piece[0]["type"] in _TOP_BLOCKS or not stacks or stacks[-1][0][0]["type"] in _TOP_BLOCKS
+                    or index == header):
                 stacks.append([piece])
             else:
                 stacks[-1].append(piece)
@@ -359,25 +393,36 @@ class _Converter:
             while keep and self.lines[libraries[keep - 1].end_lineno].strip() != "":
                 keep -= 1
             if keep < len(libraries):
-                return _Converter(self.source, library_limit=keep).workspace()
+                return _Converter(self.source, library_limit=keep, take_imports=self.take_imports).workspace()
 
         # An import no block needs is kept as written, as Python code at the top.
         unused = [node for node in imports if node.names[0].name not in self.needs]
+        if unused and header:   # they would go above the header, or between it and the code: leave all as written
+            return _Converter(self.source, take_imports=False).workspace()
         if unused:
             stacks.insert(0, [(self._code_statement(node), node.lineno) for node in unused])
+        # The generator takes a first stack of comments and a docstring for the header, whatever the converter meant.
+        # With imports to write, the two must agree, or the text would change (BF-7).
+        if imports and stacks and _is_header([block for block, _ in stacks[0]]) != (header > 0):
+            return _Converter(self.source, take_imports=False).workspace()
         if not stacks:
             return {}
 
         # The generator writes the imports it took in, one blank line, then the program from its first block's blank
         # lines on (two before a def, as PEP 8 has it, is one more). With no imports to write, the first block has none.
-        first = stacks[0][0][0]
-        if "blank" in first.get("extraState", {}):
-            written = not unused and len(imports) > 0
-            first["extraState"]["blank"] -= 1 if written else first["extraState"]["blank"]
-            if not first["extraState"]["blank"]:
-                del first["extraState"]["blank"]
-            if not first["extraState"]:
-                del first["extraState"]
+        # A header comes first, and the code after the imports is the stack under it.
+        written = not unused and len(imports) > 0
+        firsts = [(stacks[0][0][0], None)] if header or not written else []   # None: all of its blank lines go
+        if written and len(stacks) > (1 if header else 0):
+            firsts.append((stacks[1 if header else 0][0][0], 1))
+        for block, count in firsts:
+            extra = block.get("extraState", {})
+            if "blank" in extra:
+                extra["blank"] -= extra["blank"] if count is None else count
+                if not extra["blank"]:
+                    del extra["blank"]
+                if not extra:
+                    del block["extraState"]
 
         tops = []
         for stack in stacks:
@@ -390,10 +435,13 @@ class _Converter:
         """The `import math` / `random` / `time`, `import funground as f` and `from funground import sound` (and
         `camera`, `ml`, `sangeet`) lines at the very top: the generator writes these itself."""
         taken: list[ast.Import | ast.ImportFrom] = []
+        docstring = self._docstring()
         rank = -1   # of the last line taken, in the order the generator writes them: modules, funground, libraries
         ordered = True   # every line taken so far is in that order, so a library line can follow
         libraries = 0
-        for node in self.tree.body:
+        for node in self.tree.body[1 if docstring is not None else 0:]:
+            if docstring is not None and node.lineno <= docstring.end_lineno:
+                break   # `"""doc"""; import math`: not a line of its own
             if isinstance(node, ast.ImportFrom):
                 name = self._library_line(node, taken[-1] if taken else None, rank) if ordered else None
                 if name is None or libraries == self.library_limit:
@@ -413,6 +461,17 @@ class _Converter:
             taken.append(node)
         return taken
 
+    def _docstring(self) -> ast.Expr | None:
+        """The program's first statement, when it is a string (a module docstring)."""
+        first = self.tree.body[0] if self.tree.body else None
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            return first
+        return None
+
+    def _last_row_above(self, node: ast.stmt) -> int:
+        """The last row above the statement with text on it (a header's end), or 0."""
+        return next((row for row in range(node.lineno - 1, 0, -1) if self.lines[row - 1].strip()), 0)
+
     def _library_line(self, node: ast.ImportFrom, previous: ast.stmt | None, rank: int) -> str | None:
         """The library's name if this line is exactly what the generator writes at this place: alone on its line,
         with no comment, the libraries in alphabetical order, one blank line after the standard library's imports,
@@ -426,8 +485,9 @@ class _Converter:
             return None
         if rank >= len(IMPORT_ORDER) + 1 + LIBRARIES.index(name):
             return None   # out of order, or a second copy
+        above = previous.end_lineno if previous else self._last_row_above(node)   # the first line: the header's end
         blanks = 1 if rank < len(IMPORT_ORDER) and previous is not None else 0
-        gap = range((previous.end_lineno if previous else 0) + 1, node.lineno)
+        gap = range(above + 1, node.lineno)
         if len(gap) != blanks or any(self.lines[row - 1].strip() for row in gap):
             return None
         return name

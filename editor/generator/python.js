@@ -110,20 +110,23 @@ class PythonGenerator extends Blockly.CodeGenerator {
       .filter((block) => !block.outputConnection)
       .map((block) => ({ block, at: block.getRelativeToSurfaceXY() }))
       .sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x);
+    // The header (a docstring and/or comments, the first stack) is written above the imports (BF-7).
+    const header = tops.length && isHeader(tops[0].block) ? this.blockToCode(tops.shift().block) : "";
     let code = "";
     for (const { block } of tops) {
       const part = this.blockToCode(block);
       if (typeof part === "string") code += part;
     }
     this.ending = sketchEnding(tops.map(({ block }) => block));
-    return this.finish(code);
+    return this.finish(code, header);
   }
 
   /**
-   * The imports, then the code. After the imports one blank line always, and the first block's blank lines more (two
-   * before a def, as PEP 8 has it); with no imports the program starts at its first line.
+   * The header, the imports, then the code. After the imports one blank line always, and the first block's blank lines
+   * more (two before a def, as PEP 8 has it); no blank line between the header and the imports (156 of the 183 examples with a header and an import have none); with no imports the
+   * program starts at its first line, or follows the header.
    */
-  finish(code) {
+  finish(code, header = "") {
     // the standard library's modules, then funground (a group of its own, as PEP 8 and funground's examples have it)
     const groups = [
       IMPORT_ORDER.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `import ${m}\n`).join(""),
@@ -131,7 +134,9 @@ class PythonGenerator extends Blockly.CodeGenerator {
       (this.modules.has("funground") && !this.imported?.has("funground") ? "import funground as f\n" : "")
         + LIBRARIES.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `from funground import ${m}\n`).join(""),
     ].filter(Boolean);
-    let text = groups.length ? groups.join("\n") + "\n" + code : code.replace(/^\n+/, "");
+    header = header.replace(/^\n+/, "");
+    let text = groups.length ? header + groups.join("\n") + "\n" + code
+      : header + (header ? code : code.replace(/^\n+/, ""));
     text = text.replace(/\n+$/, "") + (text.trim() === "" ? "" : "\n");
     // A sketch starts itself (BF-D-022): f.run() after an "every frame" hat, two blank lines below the code;
     // f.show() straight after a drawing with none. Not when the program already does (f.run(fps=30), say).
@@ -140,6 +145,25 @@ class PythonGenerator extends Blockly.CodeGenerator {
     }
     return text;
   }
+}
+
+// A string on its own, a docstring: not `"a".join(x)` or `"a" "b"`. to_blocks.py has the same pattern.
+const STRING_STATEMENT = /^[rRuU]?(?:"{3}(?:[^"\\]|\\[\s\S]|"(?!""))*"{3}|'{3}(?:[^'\\]|\\[\s\S]|'(?!''))*'{3}|"(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*')$/;
+
+/**
+ * Whether a top block heads a header (BF-7): a stack of "Python code" blocks that are comment lines, and at most one
+ * string (the docstring), as the converter makes them. The generator writes it above the imports; any other first
+ * stack starts the program, and the imports go above it.
+ */
+function isHeader(top) {
+  let strings = 0;
+  for (let block = top; block; block = block.getNextBlock()) {
+    const text = block.type === typeOf("code") ? String(block.getFieldValue("TEXT") ?? "") : "";
+    if (!text.trim()) return false;
+    if (text.split("\n").every((line) => line.trimStart().startsWith("#"))) continue;
+    if (++strings > 1 || !STRING_STATEMENT.test(text)) return false;
+  }
+  return true;
 }
 
 /**

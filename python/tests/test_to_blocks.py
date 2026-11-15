@@ -339,7 +339,60 @@ def test_an_ending_the_generator_would_not_write_stays_as_written():
     assert kinds(with_frames)[-1] == "method"
 
 
-def test_a_comment_above_the_imports_keeps_them_as_written():
-    source = "# my sketch\nimport funground as f\n\nf.circle(1, 2, 3)\nf.show()\n"
-    assert kinds(source) == ["code", "circle", "method"]
-    assert tops(source)[0]["fields"]["TEXT"] == "import funground as f"
+def test_a_comment_above_the_imports_is_a_header_and_a_blank_line_after_it_keeps_them_as_written():
+    # BF-7: straight under the comment the imports are taken in (the comment is a stack of its own); a blank line in
+    # between would be lost in the round trip, so they stay as written, the comment above them
+    assert stack_kinds("# my sketch\nimport funground as f\n\nf.circle(1, 2, 3)\nf.show()\n") == [["code"], ["circle"]]
+    source = "# my sketch\n\nimport funground as f\n\nf.circle(1, 2, 3)\nf.show()\n"
+    assert kinds(source) == ["code", "code", "circle", "method"]
+    assert tops(source)[0]["fields"]["TEXT"] == "# my sketch"
+
+
+def stack_kinds(source):
+    """The kinds of blocks in each stack."""
+    return [[b["type"][3:] for b in chain(top)] for top in tops(source)]
+
+
+def test_imports_after_a_header_are_taken_in_and_the_header_is_a_stack_of_its_own():
+    # BF-7: a docstring and/or comment lines, then the imports on the next line
+    roll = "x = random.randint(1, 6)\n"
+    assert stack_kinds('"""A."""\nimport random\n\n' + roll) == [["code"], ["set"]]
+    assert stack_kinds("# A.\n# B.\nimport random\n\n" + roll) == [["code"], ["set"]]
+    # (a comment straight above the docstring is the docstring's own)
+    assert stack_kinds('# A.\n"""B."""\n# C.\nimport random\n\n' + roll) == [["code", "code"], ["set"]]
+    assert stack_kinds('"""A."""\nfrom funground import sound\n\nsound.b()\n') == [["code"], ["method"]]
+    # the blank lines after the imports stay on the first block of the code, less the one the generator writes
+    assert first_blank('"""A."""\nimport random\n\n\n' + roll) == 1
+    assert first_blank('"""A."""\nimport random\n\n' + roll) == 0
+    # the kit applies below a header, and its import is taken in
+    sketch = '"""A."""\nimport funground as f\n\nf.circle(1, 2, 3)\nf.show()\n'
+    assert stack_kinds(sketch) == [["code"], ["circle"]]
+    # kept as written (the imports are Python code): two blank lines, none, a note on the docstring's line, two strings,
+    # a string that is a call, an import no block uses
+    for source in [
+        '"""A."""\n\nimport random\n\n' + roll,
+        '"""A."""\n\n\nimport random\n\n' + roll,
+        "# A.\n\nimport random\n\n" + roll,
+        '"""A."""  # note\nimport random\n\n' + roll,
+        '"A" "B"\nimport random\n\n' + roll,
+        '"""A."""\n"""B."""\nimport random\n\n' + roll,
+        '"{}".format(1)\nimport random\n\n' + roll,
+        '"""A."""\nimport random\n\nx = 1\n',
+    ]:
+        assert "import random" in code_texts(source), source
+    # the kit's blocks apply when its import stays as written, too
+    kit = '"""A."""\nimport funground as f\n\nf.circle(1, 2, 3)\n'
+    assert "circle" in [kind for stack in stack_kinds(kit) for kind in stack]
+    # with no header the program is one stack, as before; a lone comment before a def would look like a header to the
+    # generator, so the imports are kept
+    assert stack_kinds("import random\n\n# Roll.\n" + roll) == [["set"]]
+    assert "import random" in code_texts("import random\n\n# Roll.\n\ndef f():\n    return random.random()\n")
+
+
+def code_texts(source):
+    return [b["fields"]["TEXT"] for top in tops(source) for b in chain(top) if b["type"] == "bf_code"]
+
+
+def first_blank(source):
+    """The blank lines on the first block of the code, under a header."""
+    return tops(source)[1].get("extraState", {}).get("blank", 0)
