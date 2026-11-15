@@ -3,6 +3,6 @@
 // `import * as Blockly from "blockly"` the names it uses (see the import map in index.html).
 const Blockly = globalThis.Blockly;
 export const {
-  Blocks, CodeGenerator, dialog, Events, FieldDropdown, FieldLabel, FieldLabelSerializable,
-  FieldTextInput, Workspace, icons, inject, serialization,
+  Blocks, CodeGenerator, ConnectionType, dialog, DropDownDiv, Events, FieldDropdown, FieldLabel, FieldLabelSerializable,
+  FieldTextInput, WidgetDiv, Workspace, icons, inject, serialization,
 } = Blockly;
