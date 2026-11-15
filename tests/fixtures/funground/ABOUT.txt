@@ -1,0 +1,3 @@
+These two files are copies from funground, commit 6a12f01 (git show 6a12f01:funground/completions.json
+and git show 6a12f01:funground/type_cases.json). blockly-fun keeps them only to test against.
+They are not used by the editor itself: the host gives the catalogue to createBlocksEditor.

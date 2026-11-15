@@ -9,12 +9,19 @@
 //
 // `convert(source)` is how the editor reaches Python (python_bridge.js: blockly_fun.convert in funground-web's runner);
 // without it, fromPython says so.
+//
+// `catalogue` is funground's catalogue (completions.json, parsed) and `helpBase` the address its relative `url`s are
+// read against. With a catalogue the two general call blocks get a searchable name list, labelled slots, a tooltip and
+// Help (Funground_Calls_Note.md); without one the editor is exactly what it was. blockly-fun never fetches it.
 
 import * as Blockly from "blockly";
 import {
   registerBlocks, registeredSettings, toolbox, watchLines, forgetOrderOnEdit, ownBlocks, ownStaticBlocks, OWN_CATEGORY,
 } from "./blocks/register.js";
 import { generator } from "./generator/python.js";
+import { createCatalogue } from "./catalogue/index.js";
+import { TypeTracker } from "./catalogue/types.js";
+import { refreshCall } from "./catalogue/call_block.js";
 
 function ensureRegistered() {
   if (!registeredSettings()) registerBlocks();
@@ -51,9 +58,19 @@ export function tidiedLines(before, after) {
 /**
  * `media` is the folder of Blockly's icons and sounds (node_modules/blockly/media/, or dist/media/ beside the bundle).
  */
-export function createBlocksEditor({ element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null, media }) {
+export function createBlocksEditor({
+  element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null, media, catalogue = null, helpBase = null,
+}) {
   let settings = { words, pythonLine };
   let workspace = null;
+  const index = catalogue ? createCatalogue(catalogue, { helpBase }) : null;
+
+  /** Works the types of objects out again, and brings the call blocks' labels up to date (after a load). */
+  const refreshCalls = () => {
+    if (!index) return;
+    workspace.bfTypes.update();
+    for (const block of workspace.getAllBlocks(false)) if (block.bfCatalogue) refreshCall(block);
+  };
 
   const changed = (event) => {
     if (event.isUiEvent) return;
@@ -61,7 +78,7 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
   };
 
   function open(json) {
-    registerBlocks(settings);
+    registerBlocks({ ...settings, catalogue: index });
     element.replaceChildren();
     workspace = Blockly.inject(element, {
       toolbox: toolbox(),
@@ -72,7 +89,10 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
       move: { scrollbars: true, drag: true, wheel: true },
     });
     workspace.registerToolboxCategoryCallback(OWN_CATEGORY, (ws) => [...ownStaticBlocks(), ...ownBlocks(ws)]);
+    // the type rule (section 4): worked out again on change events, at most once per frame
+    if (index) workspace.bfTypes = new TypeTracker(workspace, index, () => refreshCalls());
     if (json) Blockly.serialization.workspaces.load(json, workspace);
+    refreshCalls();
     watchLines(workspace);
     forgetOrderOnEdit(workspace);
     workspace.addChangeListener(changed);
@@ -93,6 +113,7 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
     /** Replaces the program with this JSON. */
     load(json) {
       Blockly.serialization.workspaces.load(json, workspace);
+      refreshCalls();
       onChange(generator.workspaceToCode(workspace));
     },
     /**
@@ -105,6 +126,7 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
       if (!result.ok) return result;
       Blockly.serialization.workspaces.load(result.workspace, workspace);
       workspace.cleanUp();               // the converter's positions give the order; Blockly stacks them by drawn height
+      refreshCalls();
       const text = generator.workspaceToCode(workspace);
       onChange(text);
       return { ok: true, raw: result.raw, tidied: tidiedLines(source, text) };

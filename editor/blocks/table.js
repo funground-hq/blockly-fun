@@ -13,11 +13,16 @@
 //   mutator   "items" | "args" | "if": the gear
 //   own       true = a call of a block the learner made: the name as a label, a count of slots, no gear
 //   order     true = the block carries the precedence of the Python it holds (extraState.order)
+//   catalogue a label used instead of scratch when funground's catalogue is given (Funground_Calls_Note.md, section 7);
+//             a field with catalogue: true gets the searchable name list (FieldCatalogueName)
 //
 // Label tokens: {NAME} is a value input, [NAME] is a field. In a line, [NAME] is replaced by the field's value
 // and the letters A, B, N, S, x, L stand for the slots.
 // A gear block has a label of {head, first, sep, tail}: the head, then the items (the text "first" before the first
 // one, "sep" before every other), then the tail.
+
+/** The prefix of every block type the editor registers ("bf_" + the type of the table). */
+export const PREFIX = "bf_";
 
 export const CATEGORIES = [
   { id: "saying", name: "Saying and asking", colour: 290 },
@@ -39,10 +44,13 @@ const NAME = (def) => ({ kind: "name", default: def });
 // a variable or loop variable: a dropdown of the names used in the program (FieldName in register.js)
 const VARNAME = (def) => ({ kind: "var", default: def });
 
+// The name of a general call is looked up in funground's catalogue when one is given (section 5)
+const CALL_NAME = { ...NAME("name"), catalogue: true };
+
 const CALL_FN = {
   cat: "calls",
   mutator: "args",
-  fields: { NAME: NAME("name") },
+  fields: { NAME: CALL_NAME },
   scratch: { head: "call [NAME]", first: "with", sep: ",", tail: "" },
   python: { head: "[NAME](", first: "", sep: ",", tail: ")" },
   line: "name(a, b, k=v)",
@@ -51,8 +59,10 @@ const CALL_FN = {
 const CALL_METHOD = {
   cat: "calls",
   mutator: "args",
-  fields: { NAME: NAME("name") },
+  fields: { NAME: CALL_NAME },
   scratch: { head: "call [NAME] on {OBJ}", first: "with", sep: ",", tail: "" },
+  // with the catalogue: "f . text align" (section 7)
+  catalogue: { scratch: { head: "{OBJ} . [NAME]", first: "with", sep: ",", tail: "" } },
   python: { head: "{OBJ}.[NAME](", first: "", sep: ",", tail: ")" },
   line: "x.name(a, b, k=v)",
 };
