@@ -228,6 +228,16 @@ async function main() {
 
     // a switch after a run: the same worker, reused
     report.switches = await evaluate("window.bfDemo.timings.switches");
+
+    // phase D: the bundle a host page loads (dist/, from npm run build) works on its own
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/demo/bundle.html` });
+    let bundle = "loading";
+    for (let i = 0; i < 240 && /^loading/.test(bundle); i += 1) {
+      await sleep(250);
+      try { bundle = await evaluate("document.getElementById('status').textContent"); } catch { /* navigating */ }
+    }
+    report.bundle = bundle;
+    if (!bundle.startsWith("bundle ok")) report.problems.push("the bundle: " + bundle);
   } catch (error) {
     report.problems.push(String(error.stack ?? error));
   } finally {

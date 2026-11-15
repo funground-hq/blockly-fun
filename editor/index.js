@@ -48,7 +48,10 @@ export function tidiedLines(before, after) {
   return changed;
 }
 
-export function createBlocksEditor({ element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null }) {
+/**
+ * `media` is the folder of Blockly's icons and sounds (node_modules/blockly/media/, or dist/media/ beside the bundle).
+ */
+export function createBlocksEditor({ element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null, media }) {
   let settings = { words, pythonLine };
   let workspace = null;
 
@@ -62,6 +65,7 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
     element.replaceChildren();
     workspace = Blockly.inject(element, {
       toolbox: toolbox(),
+      ...(media ? { media } : {}),
       renderer: "zelos",
       trashcan: true,
       zoom: { controls: true, wheel: true, startScale: 0.9 },

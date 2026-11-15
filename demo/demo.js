@@ -61,6 +61,7 @@ const editor = createBlocksEditor({
   element: document.getElementById("blocks"),
   words: words.value,
   pythonLine: pythonLine.checked,
+  media: "../node_modules/blockly/media/",
   onChange: (text) => { if (!edited) python.value = text; },
   convert: (source) => {
     if (!convert) return { ok: false, line: 0, message: "Python is still loading, so the text cannot become blocks yet." };
