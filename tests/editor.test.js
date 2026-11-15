@@ -38,9 +38,9 @@ function fromToolbox(id) {
 
 test("toolbox blocks make code at once, with their defaults", () => {
   assert.equal(fromToolbox("repeat"), "for _ in range(10):\n    pass\n");
-  assert.equal(fromToolbox("if"), "if 0 == 0:\n    pass\n");
-  assert.equal(fromToolbox("while"), "while 0 == 0:\n    pass\n");
-  assert.equal(fromToolbox("until"), "while not 0 == 0:\n    pass\n");
+  assert.equal(fromToolbox("if"), "if v == 0:\n    pass\n");
+  assert.equal(fromToolbox("while"), "while v == 0:\n    pass\n");
+  assert.equal(fromToolbox("until"), "while not v == 0:\n    pass\n");
   assert.equal(fromToolbox("count"), "for i in range(0, 10):\n    pass\n");
   assert.equal(fromToolbox("count_by"), "for i in range(0, 10, 1):\n    pass\n");
   assert.equal(fromToolbox("for_each"), "for item in list:\n    pass\n");
@@ -64,9 +64,9 @@ test("toolbox value blocks have defaults too", () => {
   assert.equal(value("ask"), "input(\"What is your name? \")");
   assert.equal(value("randint"), "random.randint(1, 6)");
   assert.equal(value("arith"), "0 + 0");
-  assert.equal(value("compare"), "0 == 0");
-  assert.equal(value("logic"), "0 == 0 and 0 == 0");
-  assert.equal(value("not"), "not 0 == 0");
+  assert.equal(value("compare"), "v == 0");
+  assert.equal(value("logic"), "v == 0 and v == 0");
+  assert.equal(value("not"), "not v == 0");
   assert.equal(value("round"), "round(0)");
   assert.equal(value("list_of"), "[1, 2]");
   assert.equal(value("item_at"), "list[0]");
@@ -99,14 +99,21 @@ test("no toolbox block makes None, and every value slot has a block or a shadow 
   workspace.dispose();
 });
 
-test("a condition is a real comparison with number shadows in it; a shadow may not hold a real block", () => {
+test("a condition is a real comparison, v = 0, whose name is chosen or typed; a shadow may not hold a real block", () => {
   registerBlocks(SCRATCH);
   const workspace = new Blockly.Workspace();
   const block = Blockly.serialization.blocks.append(toolboxBlock("if"), workspace);
   const condition = block.getInputTargetBlock("IF0");
   assert.equal(condition.type, typeOf("compare"));
   assert.ok(!condition.isShadow());
-  assert.ok(condition.getInputTargetBlock("A").isShadow());
+  const left = condition.getInputTargetBlock("A");
+  assert.ok(left.isShadow());
+  assert.equal(left.type, typeOf("variable"));
+  const field = left.getField("VAR");
+  assert.ok(field instanceof FieldName, "the name is a dropdown of the names in use");
+  assert.ok(field.acceptName("guess"), "a new name can be typed");
+  assert.equal(generator.blockToCode(block), "if guess == 0:\n    pass\n");
+  assert.ok(condition.getInputTargetBlock("B").isShadow());
   assert.throws(() => Blockly.serialization.blocks.append({
     type: typeOf("arith"),
     inputs: { A: { shadow: { type: typeOf("arith"), inputs: { A: { block: { type: typeOf("number") } } } } } },
@@ -137,9 +144,9 @@ test("covering a shadow with a real block makes the real block; taking it away b
   assert.equal(generator.workspaceToCode(workspace).split("\n")[0], "for _ in range(3):");
   // a comparison is edited or replaced like any block
   const check = Blockly.serialization.blocks.append(toolboxBlock("if"), workspace);
-  check.getInputTargetBlock("IF0").getInputTargetBlock("A").setFieldValue("5", "NUM");
+  check.getInputTargetBlock("IF0").getInputTargetBlock("B").setFieldValue("5", "NUM");
   check.getInputTargetBlock("IF0").setFieldValue("<", "OP");
-  assert.ok(generator.workspaceToCode(workspace).includes("if 5 < 0:"));
+  assert.ok(generator.workspaceToCode(workspace).includes("if v < 5:"));
   workspace.dispose();
 });
 

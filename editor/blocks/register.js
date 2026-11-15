@@ -552,9 +552,8 @@ const shadowOf = (spec) => {
   if (spec.number !== undefined) return { shadow: { type: typeOf("number"), fields: { NUM: String(spec.number) } } };
   if (spec.text !== undefined) return { shadow: { type: typeOf("text"), fields: { TEXT: spec.text } } };
   if (spec.name !== undefined) return { shadow: { type: typeOf("variable"), fields: { VAR: spec.name } } };
-  // a condition: a real comparison, 0 = 0, with number shadows in it
-  const zero = { shadow: { type: typeOf("number"), fields: { NUM: "0" } } };
-  return { block: { type: typeOf("compare"), inputs: { A: zero, B: zero } } };
+  // a condition: a real comparison, v = 0, whose left side is a name to choose or type and whose right a number
+  return { block: toolboxBlock("compare") };
 };
 
 /** The JSON of a block as the toolbox gives it: its slots filled with editable defaults. */

@@ -221,7 +221,7 @@ export const BY_TYPE = Object.fromEntries(BLOCKS.map((b) => [b.type, b]));
 
 // What a block brings from the toolbox in each value slot, so it can be edited at once, as in Scratch:
 //   {number: 10}  a number shadow         {text: "Hello!"}  a text shadow
-//   {name: "list"} a variable shadow      {cond: true}      a real comparison (0 = 0) with number shadows in it
+//   {name: "list"} a variable shadow      {cond: true}      a real comparison (v = 0) with shadows in it
 // A shadow is typed over, or covered by dropping a block on it. A comparison is a block like any other, so it is
 // edited or replaced; a shadow may not hold a real block, which is why the condition is not a shadow.
 const number = (value) => ({ number: value });
@@ -247,7 +247,8 @@ export const DEFAULTS = {
   round: { X: number(0) },
   sqrt: { X: number(0) },
   abs: { X: number(0) },
-  compare: { A: number(0), B: number(0) },
+  // the left side is a name, so a condition is ready to choose (or type) a variable in, as a learner expects
+  compare: { A: name("v"), B: number(0) },
   logic: { A: cond, B: cond },
   not: { X: cond },
   repeat: { N: number(10) },
