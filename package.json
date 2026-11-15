@@ -15,6 +15,11 @@
     "build": "node tools/build.mjs"
   },
   "devDependencies": {
+    "@blockly/field-angle": "13.4.0",
+    "@blockly/field-colour": "13.4.0",
+    "@blockly/field-grid-dropdown": "13.4.0",
+    "@blockly/field-multilineinput": "13.4.0",
+    "@blockly/field-slider": "13.4.0",
     "blockly": "13.4.0",
     "esbuild": "0.28.2",
     "jsdom": "29.1.1"

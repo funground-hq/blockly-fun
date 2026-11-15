@@ -12,7 +12,8 @@
 //
 // `catalogue` is funground's catalogue (completions.json, parsed) and `helpBase` the address its relative `url`s are
 // read against. With a catalogue the two general call blocks get a searchable name list, labelled slots, a tooltip and
-// Help (Funground_Calls_Note.md); without one the editor is exactly what it was. blockly-fun never fetches it.
+// Help (Funground_Calls_Note.md), and a number or colour slot gets a dial, a slider or a grid of colours (editor/editors/);
+// without a catalogue the editor is exactly what it was. blockly-fun never fetches it.
 
 import * as Blockly from "blockly";
 import {
@@ -22,6 +23,7 @@ import { generator } from "./generator/python.js";
 import { createCatalogue } from "./catalogue/index.js";
 import { TypeTracker } from "./catalogue/types.js";
 import { refreshCall } from "./catalogue/call_block.js";
+import { EditorTracker } from "./editors/index.js";
 
 function ensureRegistered() {
   if (!registeredSettings()) registerBlocks();
@@ -70,6 +72,7 @@ export function createBlocksEditor({
     if (!index) return;
     workspace.bfTypes.update();
     for (const block of workspace.getAllBlocks(false)) if (block.bfCatalogue) refreshCall(block);
+    workspace.bfEditors.update();
   };
 
   const changed = (event) => {
@@ -91,6 +94,8 @@ export function createBlocksEditor({
     workspace.registerToolboxCategoryCallback(OWN_CATEGORY, (ws) => [...ownStaticBlocks(), ...ownBlocks(ws)]);
     // the type rule (section 4): worked out again on change events, at most once per frame
     if (index) workspace.bfTypes = new TypeTracker(workspace, index, () => refreshCalls());
+    // the editors of slots (section 6): a dial, a slider, a grid of colours; worked out again on change events too
+    if (index) workspace.bfEditors = new EditorTracker(workspace, index);
     if (json) Blockly.serialization.workspaces.load(json, workspace);
     refreshCalls();
     watchLines(workspace);

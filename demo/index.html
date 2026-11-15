@@ -74,7 +74,19 @@
   </main>
   <script src="../node_modules/blockly/blockly_compressed.js"></script>
   <script src="../node_modules/blockly/msg/en.js"></script>
-  <script type="importmap">{"imports": {"blockly": "./blockly-global.js"}}</script>
+  <script src="../node_modules/@blockly/field-grid-dropdown/dist/index.js"></script>
+  <script src="../node_modules/@blockly/field-angle/dist/index.js"></script>
+  <script src="../node_modules/@blockly/field-slider/dist/index.js"></script>
+  <script src="../node_modules/@blockly/field-colour/dist/index.js"></script>
+  <script src="../node_modules/@blockly/field-multilineinput/dist/index.js"></script>
+  <script type="importmap">{"imports": {
+    "blockly": "./blockly-global.js",
+    "@blockly/field-angle": "./blockly-plugins.js",
+    "@blockly/field-colour": "./blockly-plugins.js",
+    "@blockly/field-grid-dropdown": "./blockly-plugins.js",
+    "@blockly/field-multilineinput": "./blockly-plugins.js",
+    "@blockly/field-slider": "./blockly-plugins.js"
+  }}</script>
   <script type="module" src="./demo.js"></script>
 </body>
 </html>
