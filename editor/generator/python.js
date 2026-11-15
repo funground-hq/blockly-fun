@@ -14,15 +14,21 @@ import { typeOf, setLineProvider } from "../blocks/register.js";
 export const ORDER = {
   ATOMIC: 0, // literals, names, brackets
   CALL: 1, // x.name, x[i], f(x)
+  AWAIT: 2, // await x
   EXPONENT: 3, // **   (right to left)
   UNARY: 4, // -x
   MULTIPLICATIVE: 5, // * / // %
   ADDITIVE: 6, // + -
+  SHIFT: 7, // << >>
+  BITWISE_AND: 8, // &
+  BITWISE_XOR: 9, // ^
+  BITWISE_OR: 10, // |
   RELATIONAL: 11, // == != < > <= >= in
   NOT: 12, // not x
   AND: 13,
   OR: 14,
-  LOWEST: 16, // anything we know nothing about
+  CONDITIONAL: 15, // x if c else y
+  LOWEST: 16, // lambda, and anything we know nothing about
   NONE: 99, // a slot that takes anything (arguments, the right side of =)
 };
 // Strictly tighter than relational: both sides of a comparison, so a < b < c is never made by two blocks.
@@ -256,6 +262,13 @@ const methodCode = (b) => {
   }
   return `${g.need(b, "OBJ", ORDER.CALL)}.${callCode(b)}`;
 };
+// a call of a block the learner made: a count of positional arguments, a name that is only a label
+const ownCode = (b) => {
+  const values = Array.from({ length: b.bfState.args }, (_, i) => g.need(b, "ARG" + i));
+  return `${b.getFieldValue("NAME")}(${values.join(", ")})`;
+};
+define("own_call", (b) => line(ownCode(b)));
+define("own_call_value", (b) => [ownCode(b), ORDER.CALL]);
 define("call", (b) => line(callCode(b)));
 define("call_value", (b) => [callCode(b), ORDER.CALL]);
 define("method", (b) => line(methodCode(b)));
@@ -266,8 +279,11 @@ define("code", (b) => {
   const text = b.getFieldValue("TEXT");
   return text.endsWith("\n") ? text : line(text);
 });
+// The converter knows the precedence of the Python it holds and says so (extraState.order); a block made in the
+// editor has none, and its text is judged by its look.
 define("code_value", (b) => {
   const text = b.getFieldValue("TEXT");
+  if (b.bfOrder) return [text, ORDER[b.bfOrder] ?? ORDER.LOWEST];
   return [text, SIMPLE_ATOM.test(text) ? ORDER.ATOMIC : ORDER.LOWEST];
 });
 

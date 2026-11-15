@@ -10,8 +10,8 @@ export default program(
     s.def("square", "x", [s.ret(v.mul(x("x"), x("x")))]).blank(1),
   ],
   [
-    s.call("greet", t("Mia"), 3).blank(1),
-    s.say(t("5 squared is"), v.call("square", 5)),
-    s.say(t("12 squared is"), v.call("square", 12)),
+    s.own("greet", t("Mia"), 3).blank(1),
+    s.say(t("5 squared is"), v.own("square", 5)),
+    s.say(t("12 squared is"), v.own("square", 12)),
   ],
 );

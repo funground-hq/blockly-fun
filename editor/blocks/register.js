@@ -6,7 +6,7 @@
 // as JSON loads under either setting and makes the same Python.
 
 import * as Blockly from "blockly";
-import { BLOCKS, CATEGORIES, DEFAULTS } from "./table.js";
+import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS } from "./table.js";
 
 export const PREFIX = "bf_";
 export const typeOf = (id) => PREFIX + id;
@@ -149,6 +149,18 @@ class FieldPythonLine extends Blockly.FieldLabel {
 }
 
 /**
+ * A "Python code" value read from Python knows how tightly its text binds (extraState.order). Once the learner edits
+ * the text that may no longer be true, so the block forgets it and the generator judges the new text by its look.
+ */
+export function forgetOrderOnEdit(workspace) {
+  workspace.addChangeListener((event) => {
+    if (event.type !== Blockly.Events.BLOCK_CHANGE || event.element !== "field" || event.name !== "TEXT") return;
+    const block = workspace.getBlockById(event.blockId);
+    if (block && block.type === typeOf("code_value")) block.bfOrder = undefined;
+  });
+}
+
+/**
  * Keeps the Python lines of a workspace true: when a block, or something inside it, changes, the lines of that
  * block and of the blocks around it are drawn again if their text changed.
  */
@@ -171,6 +183,7 @@ function makeField(spec, words) {
     case "var": return new FieldName(spec.default);
     case "name": return new Blockly.FieldTextInput(spec.default, nameValidator);
     case "number": return new Blockly.FieldTextInput(spec.default, numberValidator);
+    case "label": return new Blockly.FieldLabelSerializable(spec.default);
     case "params": return new Blockly.FieldTextInput(spec.default, paramsValidator);
     case "dropdown":
       return new Blockly.FieldDropdown(spec.options.map((o) => [o[words], o.value]));
@@ -272,8 +285,8 @@ function layout(block, def, settings, state) {
     return;
   }
 
-  if (def.mutator === "items" || def.mutator === "args") {
-    const kinds = def.mutator === "items" ? Array(state.items).fill("p") : state.args;
+  if (def.mutator === "items" || def.mutator === "args" || def.own) {
+    const kinds = def.mutator === "args" ? state.args : Array(def.own ? state.args : state.items).fill("p");
     rows.tokens(words.head);
     kinds.forEach((kind, i) => {
       rows.text(i === 0 ? words.first : words.sep);
@@ -392,6 +405,9 @@ function stateFromItems(def, items) {
     });
     return { state: { args: items.map((i) => (i.type === "kw" ? "k" : "p")) }, remap };
   }
+  // the first "if" is not an item in the gear, and always keeps its condition and its body
+  remap.set("IF0", "IF0");
+  remap.set("DO0", "DO0");
   let elifs = 0;
   let hasElse = false;
   for (const item of items) {
@@ -407,6 +423,19 @@ function stateFromItems(def, items) {
     }
   }
   return { state: { elifs, else: hasElse }, remap };
+}
+
+/** A slot made by the gear, with no kept child, gets the editable default the toolbox gives (loading adds none). */
+function fillNewSlots(block, def, remap) {
+  const spec = NEW_SLOTS[def.type];
+  const kept = new Set(remap.values());
+  for (const input of block.inputList) {
+    const isNew = /^ARG\d+$/.test(input.name) || /^IF[1-9]\d*$/.test(input.name);
+    if (!isNew || kept.has(input.name) || input.connection.isConnected()) continue;
+    const filled = shadowOf(spec);
+    if (filled.shadow) input.connection.setShadowState(filled.shadow);
+    else input.connection.connect(Blockly.serialization.blocks.append(filled.block, block.workspace).outputConnection);
+  }
 }
 
 function newSlots(def, state) {
@@ -455,6 +484,7 @@ function offerStatementMenu(block, options) {
 function initialState(def) {
   if (def.mutator === "items") return { items: def.type === "say" ? 1 : 2 };
   if (def.mutator === "args") return { args: [] };
+  if (def.own) return { args: 0 };
   if (def.mutator === "if") return { elifs: 0, else: false };
   return null;
 }
@@ -483,6 +513,7 @@ function definition(def, settings) {
 
     saveExtraState() {
       const state = { ...(this.bfState ?? {}) };
+      if (def.order && this.bfOrder) state.order = this.bfOrder;
       if (isStatement) {
         if (this.bfData.blank) state.blank = this.bfData.blank;
         if (this.bfData.trailing) state.trailing = true;
@@ -493,6 +524,8 @@ function definition(def, settings) {
     loadExtraState(state) {
       this.bfData.blank = state.blank ?? 0;
       this.bfData.trailing = !!state.trailing;
+      this.bfOrder = def.order ? state.order : undefined;
+      if (def.own) rebuild(this, def, settings, { args: state.args ?? 0 });
       if (def.mutator) {
         const fresh = def.mutator === "items" ? { items: state.items ?? 1 }
           : def.mutator === "args" ? { args: state.args ?? [] }
@@ -524,6 +557,7 @@ function definition(def, settings) {
       if (def.mutator === "args") items.sort((a, b) => (a.type === "kw") - (b.type === "kw"));
       const { state, remap } = stateFromItems(def, items);
       rebuild(this, def, settings, state, remap, true);
+      fillNewSlots(this, def, remap);
       const next = newSlots(def, state);
       for (const item of items) item.block.bfSlot = next(item);
     },
@@ -563,15 +597,52 @@ export function toolboxBlock(id) {
   return Object.keys(inputs).length ? { type: typeOf(id), inputs } : { type: typeOf(id) };
 }
 
-/** A toolbox with every block, by category. */
+// "Your own blocks" is a custom category: its blocks depend on the defs in the workspace, so the editor registers
+// a callback under this name (registerToolboxCategoryCallback) that gives the flyout's blocks.
+export const OWN_CATEGORY = "BF_OWN_BLOCKS";
+const OWN_STATIC = new Set(["def", "return"]);
+
+const entry = (id) => ({ kind: "block", ...toolboxBlock(id) });
+
+/** The blocks of "Your own blocks" that do not depend on the program: make a block, give back. */
+export function ownStaticBlocks() {
+  return BLOCKS.filter((b) => OWN_STATIC.has(b.type)).map((b) => entry(b.type));
+}
+
+const paramCount = (def) => def.getFieldValue("PARAMS").split(",").filter((p) => p.trim() !== "").length;
+const givesBack = (def) => def.getDescendants(false).some(
+  (b) => b.type === typeOf("return") && b.getInputTargetBlock("VALUE") !== null);
+
+/**
+ * The blocks that call the defs of a workspace, sorted by name: a call with a slot (holding 0) for each parameter,
+ * and a value call too when the def gives something back. Renaming a def does not rename its calls: the name on a
+ * call block is a label, not a link (a known limit).
+ */
+export function ownBlocks(workspace) {
+  const defs = workspace.getBlocksByType(typeOf("def"), false)
+    .map((def) => ({ def, name: def.getFieldValue("NAME") }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const call = (type, name, count) => ({
+    kind: "block",
+    type: typeOf(type),
+    fields: { NAME: name },
+    extraState: { args: count },
+    inputs: Object.fromEntries(Array.from({ length: count }, (_, i) => ["ARG" + i, shadowOf({ number: 0 })])),
+  });
+  return defs.flatMap(({ def, name }) => [
+    call("own_call", name, paramCount(def)),
+    ...(givesBack(def) ? [call("own_call_value", name, paramCount(def))] : []),
+  ]);
+}
+
+/** A toolbox with every block, by category. "Your own blocks" is filled by the editor (see OWN_CATEGORY). */
 export function toolbox() {
   return {
     kind: "categoryToolbox",
-    contents: CATEGORIES.map((cat) => ({
-      kind: "category",
-      name: cat.name,
-      colour: cat.colour,
-      contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => ({ kind: "block", ...toolboxBlock(b.type) })),
-    })),
+    contents: CATEGORIES.map((cat) => {
+      const head = { kind: "category", name: cat.name, colour: cat.colour };
+      if (cat.id === "functions") return { ...head, custom: OWN_CATEGORY };
+      return { ...head, contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => entry(b.type)) };
+    }),
   };
 }

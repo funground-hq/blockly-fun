@@ -361,7 +361,7 @@ test("the gear: items can be added, taken away and moved, and children follow", 
     while (last.getNextBlock()) last = last.getNextBlock();
     last.nextConnection.connect(extra.previousConnection);
   });
-  assert.equal(generator.blockToCode(say), "print(\"a\", \"c\", None)\n");
+  assert.equal(generator.blockToCode(say), "print(\"a\", \"c\", \"\")\n");
 
   // the first argument goes; the keyword one would now come first, and Python wants it last
   mutate(call, (root, parts) => parts[0].unplug(true));

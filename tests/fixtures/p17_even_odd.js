@@ -6,7 +6,7 @@ export default program(
   ],
   [
     s.count("number", 1, 11, [
-      s.if([[v.call("is_even", x("number")), [s.say(x("number"), t("is even"))]]], [s.say(x("number"), t("is odd"))]),
+      s.if([[v.own("is_even", x("number")), [s.say(x("number"), t("is even"))]]], [s.say(x("number"), t("is odd"))]),
     ]).blank(1),
   ],
 );

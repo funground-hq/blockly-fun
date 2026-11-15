@@ -8,9 +8,11 @@
 //   python    the label in Python's words
 //   line      the Python line shown under the label (a string, or {if, elseif, else})
 //   fields    the named fields: name (a typed Python name), var (a name chosen from the program's), text, number,
-//             code, params, dropdown
+//             code, params, dropdown, label (a name shown, not edited)
 //   body      the names of the statement inputs (the C-shaped part)
 //   mutator   "items" | "args" | "if": the gear
+//   own       true = a call of a block the learner made: the name as a label, a count of slots, no gear
+//   order     true = the block carries the precedence of the Python it holds (extraState.order)
 //
 // Label tokens: {NAME} is a value input, [NAME] is a field. In a line, [NAME] is replaced by the field's value
 // and the letters A, B, N, S, x, L stand for the slots.
@@ -52,6 +54,17 @@ const CALL_METHOD = {
   scratch: { head: "call [NAME] on {OBJ}", first: "with", sep: ",", tail: "" },
   python: { head: "{OBJ}.[NAME](", first: "", sep: ",", tail: ")" },
   line: "x.name(a, b, k=v)",
+};
+
+// The call of a block made with "make a block". The name is a label, so renaming a def does not rename its
+// calls (a known limit). The toolbox offers one of these for each def in the workspace (ownBlocks in register.js).
+const OWN_CALL = {
+  cat: "functions",
+  own: true,
+  fields: { NAME: { kind: "label", default: "name" } },
+  scratch: { head: "[NAME]", first: "", sep: "", tail: "" },
+  python: { head: "[NAME](", first: "", sep: ",", tail: ")" },
+  line: "[NAME](a, b)",
 };
 
 const CODE = {
@@ -205,6 +218,8 @@ export const BLOCKS = [
     scratch: "make a block [NAME] with [PARAMS]", python: "def [NAME]([PARAMS])", line: "def [NAME]([PARAMS]):",
   },
   { type: "return", kind: "statement", cat: "functions", scratch: "give back {VALUE}", python: "return {VALUE}", line: "return x" },
+  { type: "own_call", kind: "statement", ...OWN_CALL },
+  { type: "own_call_value", kind: "value", ...OWN_CALL },
 
   // Calling anything else
   { type: "call", kind: "statement", ...CALL_FN },
@@ -214,7 +229,7 @@ export const BLOCKS = [
 
   // Python code
   { type: "code", kind: "statement", ...CODE, line: null },
-  { type: "code_value", kind: "value", ...CODE, line: null },
+  { type: "code_value", kind: "value", order: true, ...CODE, line: null },
 ];
 
 export const BY_TYPE = Object.fromEntries(BLOCKS.map((b) => [b.type, b]));
@@ -269,4 +284,16 @@ export const DEFAULTS = {
   return: { VALUE: number(0) },
   method: { OBJ: name("x") },
   method_value: { OBJ: name("x") },
+};
+
+// What a slot added in the gear gets (loading JSON adds none: the JSON gives the children). An else-if gets the
+// same condition as the toolbox's "if".
+export const NEW_SLOTS = {
+  say: text(""),
+  list_of: number(0),
+  call: number(0),
+  call_value: number(0),
+  method: number(0),
+  method_value: number(0),
+  if: cond,
 };

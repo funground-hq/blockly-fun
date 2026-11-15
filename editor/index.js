@@ -7,7 +7,9 @@
 //   toPython(workspaceJson);                                 // the same, with no page (tests, tools)
 
 import * as Blockly from "blockly";
-import { registerBlocks, registeredSettings, toolbox, watchLines } from "./blocks/register.js";
+import {
+  registerBlocks, registeredSettings, toolbox, watchLines, forgetOrderOnEdit, ownBlocks, ownStaticBlocks, OWN_CATEGORY,
+} from "./blocks/register.js";
 import { generator } from "./generator/python.js";
 
 function ensureRegistered() {
@@ -45,8 +47,10 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
       zoom: { controls: true, wheel: true, startScale: 0.9 },
       move: { scrollbars: true, drag: true, wheel: true },
     });
+    workspace.registerToolboxCategoryCallback(OWN_CATEGORY, (ws) => [...ownStaticBlocks(), ...ownBlocks(ws)]);
     if (json) Blockly.serialization.workspaces.load(json, workspace);
     watchLines(workspace);
+    forgetOrderOnEdit(workspace);
     workspace.addChangeListener(changed);
     onChange(generator.workspaceToCode(workspace));
   }

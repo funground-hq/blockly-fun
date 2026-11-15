@@ -6,11 +6,13 @@ import * as Blockly from "blockly";
 
 import { toPython } from "../editor/index.js";
 import {
-  registerBlocks, toolbox, toolboxBlock, typeOf, FieldName, NEW_NAME_OPTION,
+  registerBlocks, toolbox, toolboxBlock, typeOf, FieldName, NEW_NAME_OPTION, OWN_CATEGORY, ownBlocks, ownStaticBlocks,
 } from "../editor/blocks/register.js";
 import { BLOCKS } from "../editor/blocks/table.js";
 import { generator } from "../editor/generator/python.js";
 import { stmt as s, val as v, text as t, num as n, name as x, program } from "./dsl.js";
+import p14 from "./fixtures/p14_star_pattern.js";
+import p22 from "./fixtures/p22_greeting_function.js";
 
 const SCRATCH = { words: "scratch", pythonLine: true };
 
@@ -121,9 +123,15 @@ test("a condition is a real comparison, v = 0, whose name is chosen or typed; a 
   workspace.dispose();
 });
 
-test("the toolbox lists every block once, with its defaults", () => {
-  const entries = toolbox().contents.flatMap((c) => c.contents);
-  assert.equal(entries.length, BLOCKS.length);
+test("the toolbox lists every block once, with its defaults; the calls of own blocks come from the workspace", () => {
+  const categories = toolbox().contents;
+  const own = categories.find((c) => c.custom === OWN_CATEGORY);
+  assert.equal(own.name, "Your own blocks");
+  assert.equal(own.contents, undefined);
+  const entries = [...categories.flatMap((c) => c.contents ?? []), ...ownStaticBlocks()];
+  assert.deepEqual(ownStaticBlocks().map((e) => e.type), [typeOf("def"), typeOf("return")]);
+  assert.equal(entries.length, BLOCKS.length - 2); // no own_call or own_call_value: they depend on the defs
+  assert.ok(!entries.some((e) => e.type.startsWith(typeOf("own_call"))));
   const repeat = entries.find((e) => e.type === typeOf("repeat"));
   assert.deepEqual(repeat.inputs.N, { shadow: { type: typeOf("number"), fields: { NUM: "10" } } });
 });
@@ -318,4 +326,89 @@ test("the Python is the same in every setting, for a program with shadows too", 
   }
   registerBlocks(SCRATCH);
   assert.equal(texts.size, 1);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Shadows from the converter, and the toolbox's calls of own blocks
+
+/** The same JSON with every number and text block that sits in an input made a shadow, as the converter writes them. */
+function withShadows(node) {
+  if (Array.isArray(node)) return node.map(withShadows);
+  if (node === null || typeof node !== "object") return node;
+  const copy = Object.fromEntries(Object.entries(node).map(([key, value]) => [key, withShadows(value)]));
+  const literal = copy.block && (copy.block.type === typeOf("number") || copy.block.type === typeOf("text"));
+  return literal && Object.keys(copy).length === 1 ? { shadow: copy.block } : copy;
+}
+
+test("literals written as shadows make the same Python as the same blocks", () => {
+  for (const fixture of [p14, p22]) {
+    const shadowed = withShadows(fixture);
+    assert.ok(JSON.stringify(shadowed).includes("\"shadow\""));
+    assert.notDeepEqual(shadowed, fixture);
+    assert.equal(toPython(shadowed), toPython(fixture));
+  }
+  const json = program(s.repeat(3, [s.say(t("hi"))]));
+  assert.equal(toPython({ blocks: { blocks: [{ ...json.blocks.blocks[0], inputs: {
+    N: { shadow: { type: typeOf("number"), fields: { NUM: "3" } } },
+    DO: json.blocks.blocks[0].inputs.DO,
+  } }] } }), "for _ in range(3):\n    print(\"hi\")\n");
+});
+
+test("own blocks: one call for each def in the workspace, sorted by name, with a slot for each parameter", () => {
+  registerBlocks(SCRATCH);
+  const workspace = new Blockly.Workspace();
+  Blockly.serialization.workspaces.load(program(
+    [s.def("square", "x", [s.ret(v.mul(x("x"), x("x")))])],
+    [s.def("greet", "name, times", [s.say(x("name"))])],
+    [s.def("bare", "", [s.ret(null)])],
+    [s.def("early", "a", [s.repeat(2, [s.ret(x("a"))])])]), workspace);
+  const slot = { shadow: { type: typeOf("number"), fields: { NUM: "0" } } };
+  const call = (type, name, count) => ({
+    kind: "block", type: typeOf(type), fields: { NAME: name }, extraState: { args: count },
+    inputs: Object.fromEntries(Array.from({ length: count }, (_, i) => ["ARG" + i, slot])),
+  });
+  assert.deepEqual(ownBlocks(workspace), [
+    call("own_call", "bare", 0),
+    call("own_call", "early", 1), call("own_call_value", "early", 1),
+    call("own_call", "greet", 2),
+    call("own_call", "square", 1), call("own_call_value", "square", 1),
+  ]);
+  // the entries are blocks the flyout can make, and they make code at once
+  const [bare, , , greet] = ownBlocks(workspace).map((e) => Blockly.serialization.blocks.append(e, workspace));
+  assert.equal(generator.blockToCode(bare), "bare()\n");
+  assert.equal(generator.blockToCode(greet), "greet(0, 0)\n");
+  assert.deepEqual(ownBlocks(new Blockly.Workspace()), []);
+  workspace.dispose();
+});
+
+test("an own call has its name as a label, no gear, and saves only its count", () => {
+  registerBlocks(SCRATCH);
+  const workspace = new Blockly.Workspace();
+  const json = program(s.own("greet", t("Mia"), 3));
+  Blockly.serialization.workspaces.load(json, workspace);
+  const block = workspace.getTopBlocks(false)[0];
+  assert.ok(block.getField("NAME") instanceof Blockly.FieldLabelSerializable);
+  assert.equal(block.mutator, undefined);
+  assert.equal(block.getIcon("mutator"), undefined);
+  assert.equal(generator.blockToCode(block), "greet(\"Mia\", 3)\n");
+  const saved = Blockly.serialization.workspaces.save(workspace).blocks.blocks[0];
+  assert.deepEqual(saved.extraState, { args: 2 });
+  assert.deepEqual({ ...saved.fields }, { NAME: "greet" });
+  assert.equal(toPython(Blockly.serialization.workspaces.save(workspace)), "greet(\"Mia\", 3)\n");
+  assert.deepEqual(lines(block), ["greet(\"Mia\", 3)"]);
+  workspace.dispose();
+});
+
+test("an own call reads in Scratch words as the name and its slots, and in Python words as a call", () => {
+  const labels = (words) => {
+    registerBlocks({ words, pythonLine: false });
+    const workspace = new Blockly.Workspace();
+    Blockly.serialization.workspaces.load(program(s.own("greet", t("Mia"), 3)), workspace);
+    const found = workspace.getTopBlocks(false)[0].inputList.flatMap((i) => i.fieldRow).map((f) => f.getText()).join("|");
+    workspace.dispose();
+    return found;
+  };
+  assert.equal(labels("scratch"), "greet");
+  assert.equal(labels("python"), "greet|(|,|)");
+  registerBlocks(SCRATCH);
 });

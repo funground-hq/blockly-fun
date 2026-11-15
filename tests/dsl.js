@@ -71,6 +71,15 @@ function callBlock(type, fnName, items, object) {
   });
 }
 
+/** A call of a block made with "make a block": positional arguments only, a count in extraState. */
+function ownBlock(type, fnName, items) {
+  return make(type, {
+    fields: { NAME: fnName },
+    extra: { args: items.length },
+    inputs: Object.fromEntries(items.map((a, i) => ["ARG" + i, a])),
+  });
+}
+
 const binary = (type, fields) => (a, b) => make(type, { fields, inputs: { A: a, B: b } });
 const unary = (type) => (x) => make(type, { inputs: { X: x } });
 
@@ -113,8 +122,10 @@ export const val = {
   length: unary("length"),
   contains: (list, x) => make("contains", { inputs: { LIST: list, X: x } }),
   call: (fnName, ...items) => callBlock("call_value", fnName, items),
+  own: (fnName, ...items) => ownBlock("own_call_value", fnName, items),
   method: (object, methodName, ...items) => callBlock("method_value", methodName, items, object),
-  code: (source) => make("code_value", { fields: { TEXT: source } }),
+  /** Python with no block; order (a key of the generator's ORDER) is what the converter writes, if it knows it. */
+  code: (source, order) => make("code_value", { fields: { TEXT: source }, extra: order ? { order } : undefined }),
 };
 
 export const stmt = {
@@ -155,6 +166,7 @@ export const stmt = {
   def: (fnName, params, body) => make("def", { fields: { NAME: fnName, PARAMS: params }, body: { DO: body } }),
   ret: (x) => make("return", { inputs: { VALUE: x } }),
   call: (fnName, ...items) => callBlock("call", fnName, items),
+  own: (fnName, ...items) => ownBlock("own_call", fnName, items),
   method: (object, methodName, ...items) => callBlock("method", methodName, items, object),
   code: (source) => make("code", { fields: { TEXT: source } }),
 };
