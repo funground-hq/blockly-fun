@@ -86,6 +86,8 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
       return workspace;
     },
     toPython: () => generator.workspaceToCode(workspace),
+    /** Measures the page again: call it after the editor's element is shown or changes size. */
+    resize: () => Blockly.svgResize(workspace),
     /** The program as Blockly JSON, to keep. */
     save: () => Blockly.serialization.workspaces.save(workspace),
     /** Replaces the program with this JSON. */
