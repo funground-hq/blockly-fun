@@ -42,6 +42,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return str(REPO / "missing" / "runner-file")   # not ours to serve: 404
         return super().translate_path(path)
 
+    def end_headers(self):
+        # Always ask again: without this, Chrome reuses an old index.html with a new demo.js after a branch switch
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def copyfile(self, source, outputfile):
         shutil.copyfileobj(source, outputfile, CHUNK)
         outputfile.flush()
