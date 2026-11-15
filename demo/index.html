@@ -26,6 +26,10 @@
     #output { flex: 2; margin: 0; padding: .6rem 1rem; overflow: auto; background: #111; font: 13px/1.35 monospace;
               border-top: 1px solid #333; white-space: pre-wrap; }
     #output .stderr { color: #ff8a80; }
+    #stage { display: none; padding: .4rem 1rem; background: #111; border-top: 1px solid #333; text-align: center; }
+    #stage.on { display: block; }
+    /* the runner sizes the canvas to the sketch; here it shrinks to the column, keeping its shape (the mouse follows) */
+    #canvas { max-width: 100% !important; height: auto !important; outline: none; }
     header button { font: inherit; padding: .15rem .8rem; }
   </style>
 </head>
@@ -39,6 +43,15 @@
       </select>
     </label>
     <label><input type="checkbox" id="pythonLine" checked> Python line</label>
+    <label>Start from
+      <select id="start">
+        <option value="">…</option>
+        <option value="p31_bouncing_ball">a bouncing ball (sketch)</option>
+        <option value="p32_sunny_field">a sunny field (picture)</option>
+        <option value="p22_greeting_function">a greeting (your own block)</option>
+        <option value="p30_treasure_hunt">a treasure hunt (game)</option>
+      </select>
+    </label>
     <button id="run" disabled title="Run the Python (Ctrl+R)">&#9654; Run</button>
     <button id="stop" disabled>&#9632; Stop</button>
     <span id="pythonStatus"></span>
@@ -55,10 +68,10 @@
       <div id="note" aria-live="polite"></div>
       <label for="stdin">Answers for input(), one per line</label>
       <textarea id="stdin" spellcheck="false"></textarea>
+      <div id="stage"><canvas id="canvas" width="640" height="400" aria-label="The sketch"></canvas></div>
       <pre id="output" aria-label="What the program printed" aria-live="polite"></pre>
     </div>
   </main>
-  <canvas id="canvas" width="1" height="1" hidden></canvas>
   <script src="../node_modules/blockly/blockly_compressed.js"></script>
   <script src="../node_modules/blockly/msg/en.js"></script>
   <script type="importmap">{"imports": {"blockly": "./blockly-global.js"}}</script>

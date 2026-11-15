@@ -3,7 +3,8 @@
 // Phase C: both ways, and Run. Editing the blocks rewrites the Python at once. Editing the Python greys the blocks, and
 // they follow when the learner leaves the text, presses Ctrl+Enter or clicks them (BF-D-006: converted on a switch, not
 // while typing). Text that does not parse keeps the old blocks greyed, with the line to look at, and nothing is lost.
-// Run gives the Python to funground-web's runner (plain Python, `packages: []`), with the answers box as input() lines.
+// Run gives the Python to funground-web's runner (with funground, for sketches: phase C+), with the answers box as
+// input() lines. A sketch draws on the canvas above the output.
 
 import { createBlocksEditor } from "../editor/index.js";
 import { toolboxBlock } from "../editor/blocks/register.js";
@@ -128,12 +129,23 @@ async function run() {
   if (!runner || runButton.disabled) return;
   if (!(await toBlocks())) return;                     // text that does not parse is not run: the grey note says why
   output.replaceChildren();
+  document.getElementById("stage").classList.toggle("on", /^import funground as f$/m.test(python.value));
   const lines = document.getElementById("stdin").value.split("\n");
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
   runButton.disabled = true;
   stopButton.disabled = false;
   return runner.run(python.value, { filename: "main.py", ...(lines.length ? { stdin: lines } : {}) });
 }
+
+// "Start from": a contract program, read as Python and shown as blocks (so it needs Python loaded)
+document.getElementById("start").addEventListener("change", async (event) => {
+  if (!event.target.value) return;
+  const response = await fetch(`../contract/programs/${event.target.value}.py`);
+  python.value = (await response.text()).replace(/\r\n/g, "\n");
+  python.dispatchEvent(new Event("input"));
+  await toBlocks();
+  event.target.value = "";
+});
 
 runButton.addEventListener("click", run);
 stopButton.addEventListener("click", () => runner?.stop());
@@ -150,7 +162,8 @@ const loading = (async () => {
       createRunner({
         canvas: document.getElementById("canvas"),
         output: print,
-        packages: [],                  // plain Python: Pyodide alone
+        // funground and its libraries (the runner's default), so a sketch made with the drawing blocks runs; a plain
+        // program runs through it as a script. Converting needs only Python's own library.
         reuse: true,                   // one worker for every run and every switch (about 0.1 s each, not seconds)
         onFinish: () => { runButton.disabled = false; stopButton.disabled = true; },
       }),
@@ -160,7 +173,7 @@ const loading = (async () => {
     convert = runnerConverter(runner, files);
     timings.ready = Math.round(performance.now() - started);
     runButton.disabled = false;
-    pythonStatus.textContent = `Python ${runner.info.versions?.python ?? "?"} ready in ${(timings.ready / 1000).toFixed(1)} s`;
+    pythonStatus.textContent = `Python and funground ready in ${(timings.ready / 1000).toFixed(1)} s`;
   } catch (error) {
     pythonStatus.textContent = "No Python: " + (error.message ?? error) + ". Blocks to Python still works.";
   }

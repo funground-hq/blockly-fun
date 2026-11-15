@@ -8,7 +8,8 @@ it writes in 64 KB pieces and speaks HTTP/1.1 (keep-alive). Stop it with Ctrl+C.
 
 Phase C: /runner/ is funground-web's browser runner, from a checkout of it (default: the sibling folder
 ../funground-web/runner). Only the files in RUNNER_FILES are served from there: this project keeps its own list of what
-it uses. With `packages: []` the runner loads Pyodide alone, from jsDelivr, so no runtime/ folder is needed.
+it uses, and the runtime/ folder (funground's wheels and fonts, built by funground-web) for sketches (phase C+).
+Pyodide itself comes from jsDelivr.
 """
 import argparse
 import functools
@@ -24,6 +25,7 @@ DEFAULT_RUNNER = REPO.parent / "funground-web" / "runner"
 # What the demo uses of funground-web's runner: runner.js and what it imports. The worker loads nothing else of the
 # runner's own for plain Python (models-*.js only for ml.pose() and the rest, which plain Python never calls).
 RUNNER_FILES = ("runner.js", "worker.js", "audio.js", "camera.js", "microphone-worklet.js")
+RUNNER_FOLDERS = ("runtime",)   # served whole, as the runner reads them (manifest.json names the wheels)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -39,6 +41,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             name = clean[len("/runner/"):]
             if self.runner and name in RUNNER_FILES:
                 return str(self.runner / name)
+            target = (self.runner / name).resolve() if self.runner else None
+            if target and any(target.is_relative_to(self.runner / folder) for folder in RUNNER_FOLDERS):
+                return str(target)
             return str(REPO / "missing" / "runner-file")   # not ours to serve: 404
         return super().translate_path(path)
 

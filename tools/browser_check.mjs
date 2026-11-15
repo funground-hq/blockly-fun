@@ -196,6 +196,36 @@ async function main() {
     if (ran.output !== "Your name? \nHello, Ada\nHello, Ada\n") report.problems.push("the run printed " + JSON.stringify(ran.output));
     await shoot("c_run_with_input.png");
 
+    // phase C+: a sketch from "Start from" becomes hats and drawing blocks, runs, and draws on the canvas
+    const sketch = await evaluate(`(async () => {
+      const start = document.getElementById("start");
+      start.value = "p31_bouncing_ball";
+      start.dispatchEvent(new Event("change"));
+      const ws = window.bfEditor.workspace;
+      for (let i = 0; i < 200 && !ws.getBlocksByType("bf_sketch_frame").length; i += 1) await new Promise((r) => setTimeout(r, 50));
+      const types = [...new Set(ws.getAllBlocks(false).map((b) => b.type))].sort();
+      const t = performance.now();
+      await window.bfDemo.run();                              // resolves when setup() has run
+      const startedMs = Math.round(performance.now() - t);
+      await new Promise((r) => setTimeout(r, 1500));          // some frames
+      const canvas = document.getElementById("canvas");
+      const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      let gold = 0, blue = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]];
+        if (r > 240 && g > 200 && g < 230 && b < 20) gold += 1;      // gold: 255, 215, 0
+        if (r < 30 && g < 30 && b > 100 && b < 125) blue += 1;       // midnightblue: 25, 25, 112
+      }
+      const shown = document.getElementById("stage").classList.contains("on");
+      return { types, startedMs, size: [canvas.width, canvas.height], gold, blue, shown,
+               output: document.getElementById("output").textContent };
+    })()`);
+    report.sketch = sketch;
+    if (!sketch.types.includes("bf_sketch_frame") || !sketch.types.includes("bf_circle")) report.problems.push("the sketch is not hats and drawing blocks: " + sketch.types);
+    if (!sketch.shown || sketch.gold < 500 || sketch.blue < 10000) report.problems.push("the sketch did not draw: " + JSON.stringify(sketch));
+    await shoot("cplus_bouncing_ball.png");
+    await evaluate("window.bfDemo.runner.stop()");
+
     // a switch after a run: the same worker, reused
     report.switches = await evaluate("window.bfDemo.timings.switches");
   } catch (error) {
