@@ -1,10 +1,14 @@
-// The host API (Architecture section 7), phase A: blocks to Python only.
+// The host API (Architecture section 7).
 //
 //   import { createBlocksEditor, toPython } from "./editor/index.js";
-//   const editor = createBlocksEditor({ element, words: "scratch", pythonLine: true, onChange });
+//   const editor = createBlocksEditor({ element, words: "scratch", pythonLine: true, onChange, convert });
 //   editor.toPython();                                      // the program's text
+//   await editor.fromPython(source);                        // {ok, raw, tidied} or {ok: false, line, message}
 //   editor.settings({ words: "python", pythonLine: false }); // redraws the blocks; the Python stays the same
 //   toPython(workspaceJson);                                 // the same, with no page (tests, tools)
+//
+// `convert(source)` is how the editor reaches Python (python_bridge.js: blockly_fun.convert in funground-web's runner);
+// without it, fromPython says so.
 
 import * as Blockly from "blockly";
 import {
@@ -28,7 +32,23 @@ export function toPython(workspaceJson) {
   }
 }
 
-export function createBlocksEditor({ element, words = "scratch", pythonLine = true, onChange = () => {} }) {
+/**
+ * How many lines of `after` are not in `before`, counted as a multiset: the lines switching tidied (BF-D-012).
+ * Lines only moved count as unchanged; that is all the note needs.
+ */
+export function tidiedLines(before, after) {
+  const left = new Map();
+  for (const line of before.split("\n")) left.set(line, (left.get(line) ?? 0) + 1);
+  let changed = 0;
+  for (const line of after.split("\n")) {
+    const n = left.get(line) ?? 0;
+    if (n) left.set(line, n - 1);
+    else changed += 1;
+  }
+  return changed;
+}
+
+export function createBlocksEditor({ element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null }) {
   let settings = { words, pythonLine };
   let workspace = null;
 
@@ -68,6 +88,20 @@ export function createBlocksEditor({ element, words = "scratch", pythonLine = tr
     load(json) {
       Blockly.serialization.workspaces.load(json, workspace);
       onChange(generator.workspaceToCode(workspace));
+    },
+    /**
+     * Replaces the program with the blocks `source` becomes (Architecture section 4, "Switch to blocks"). Text that does
+     * not parse leaves the blocks as they are and says which line. `tidied` counts the lines the plain style rewrote.
+     */
+    async fromPython(source) {
+      if (!convert) return { ok: false, line: 0, message: "Python is not available on this page, so text cannot become blocks." };
+      const result = await convert(source);
+      if (!result.ok) return result;
+      Blockly.serialization.workspaces.load(result.workspace, workspace);
+      workspace.cleanUp();               // the converter's positions give the order; Blockly stacks them by drawn height
+      const text = generator.workspaceToCode(workspace);
+      onChange(text);
+      return { ok: true, raw: result.raw, tidied: tidiedLines(source, text) };
     },
     /** Changes what blocks show. The program is saved, the blocks are drawn again, the Python does not change. */
     settings(next) {
