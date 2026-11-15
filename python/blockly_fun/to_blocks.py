@@ -118,6 +118,15 @@ def count_code_blocks(workspace: dict) -> int:
     return sum(count(top) for top in workspace.get("blocks", {}).get("blocks", []))
 
 
+def _parses_alone(text: str) -> bool:
+    """True when the text is one expression as it stands (its line breaks inside its own brackets)."""
+    try:
+        ast.parse(text, mode="eval")
+    except SyntaxError:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Blocks as JSON
 
@@ -195,6 +204,40 @@ class _Converter:
         self.needs: set[str] = set()  # modules the blocks need imported
         self.own_functions = {node.name for node in self.tree.body
                               if isinstance(node, ast.FunctionDef) and self._is_simple_def(node)}
+        self.kept_whole = self._top_statements_kept_whole()
+        self.indent = ""  # the indentation of the statement being converted (its value's lines are written under it)
+
+    def _top_statements_kept_whole(self) -> set[int]:  # ids of the statements
+        """
+        The top-level statements that stay one "Python code" block, as written: those holding a string over several
+        lines that the generator's indentation would change. Below the top level the generator writes each line at
+        4 spaces a level; a string's inner lines move with it. That is exact only when the statement around the string
+        is indented 4 spaces a level and every inner line starts with that indentation (or is empty). Otherwise the
+        string's value would change, so the statement is kept whole at the top, where nothing is re-indented.
+        """
+        kept = set()
+
+        def visit(node: ast.AST, top: int, depth: int, indent: str) -> None:
+            if isinstance(node, ast.stmt):
+                line = self.lines[node.lineno - 1]
+                indent = line[:len(line) - len(line.lstrip())]
+            if (isinstance(node, (ast.Constant, ast.JoinedStr)) and node.end_lineno > node.lineno
+                    and isinstance(getattr(node, "value", ""), (str, bytes)) and depth > 0):
+                inner = self.lines[node.lineno:node.end_lineno]
+                if indent != " " * 4 * depth or any(line and not line.startswith(indent) for line in inner):
+                    kept.add(id(top))
+            owns_bodies = isinstance(node, (ast.stmt, ast.excepthandler, ast.match_case))
+            for name, value in ast.iter_fields(node):
+                for child in value if isinstance(value, list) else [value]:
+                    if not isinstance(child, ast.AST):
+                        continue
+                    nested = (isinstance(child, ast.stmt) and owns_bodies and name in ("body", "orelse", "finalbody")
+                              or isinstance(child, ast.match_case))   # a `case` is a level below its `match`
+                    visit(child, top, depth + 1 if nested else depth, indent)
+
+        for statement in self.tree.body:
+            visit(statement, statement, 0, "")
+        return kept
 
     # -- the program --------------------------------------------------------------------------------------------
 
@@ -385,7 +428,14 @@ class _Converter:
 
     def _statement(self, node: ast.stmt, top: bool) -> dict:
         """The block for one statement, or a "Python code" block with its exact text."""
-        block = None if self._comment_inside(node) else self._statement_block(node, top)
+        if top and id(node) in self.kept_whole:
+            return self._code_statement(node)
+        line = self.lines[self._start_row(node) - 1]
+        outer, self.indent = self.indent, line[:len(line) - len(line.lstrip())]
+        try:
+            block = None if self._comment_inside(node) else self._statement_block(node, top)
+        finally:
+            self.indent = outer
         return block if block is not None else self._code_statement(node)
 
     def _comment_inside(self, node: ast.stmt) -> bool:
@@ -626,7 +676,14 @@ class _Converter:
 
     def _code_value(self, node: ast.expr) -> dict:
         """A "Python code" value: its exact text, and how tightly it binds so it is bracketed only as needed."""
-        text = "\n".join(_NEWLINE.split(ast.get_source_segment(self.source, node)))
+        # Its later lines lose the statement's indentation, which the generator puts back (as for a statement).
+        rows = _NEWLINE.split(ast.get_source_segment(self.source, node))
+        text = "\n".join([rows[0]] + [row[len(self.indent):] if row.startswith(self.indent) else row for row in rows[1:]])
+        if len(rows) > 1 and not _parses_alone(text):
+            # Its line breaks were inside brackets around it (`(a |` / `b)`, strings side by side), which the
+            # expression's own text leaves out: it keeps a pair, so it still reads as one value. Brackets change nothing
+            # Python reads; the text may gain them where they were written further away (a tidy, BF-D-012).
+            return _block("code_value", fields={"TEXT": "(" + text + ")"}, extra={"order": "ATOMIC"})
         return _block("code_value", fields={"TEXT": text}, extra={"order": self._order(node, text)})
 
     @staticmethod

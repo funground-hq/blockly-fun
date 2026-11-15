@@ -29,4 +29,10 @@ export const SNIPPETS = [
   "x = 0xff + 1_000\ny = 1.50\n",
   "",
   "# only a comment\n",
+  // found by tools/corpus_check.mjs over real code
+  "name = \"Zoë\"\nprint(\"こんにちは,\", name)  # ✓ not ASCII\n",
+  "x = (1 |\n     2)\n\n\ndef f():\n    return (a |\n            b)\n",
+  "def f():\n    \"\"\"Doc\nnot indented\"\"\"\n    return 1\n",
+  "\"\"\"A docstring first.\"\"\"\n\nimport math\n\nx = math.sqrt(2)\n",
+  "import os, time\n\ntime.sleep(1)\n",
 ];

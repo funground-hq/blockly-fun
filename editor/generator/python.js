@@ -47,6 +47,7 @@ class PythonGenerator extends Blockly.CodeGenerator {
   init(workspace) {
     super.init(workspace);
     this.modules = new Set();
+    this.imported = importedByCode(workspace);
   }
 
   /** Asks for `import name` at the top of the program. */
@@ -115,10 +116,30 @@ class PythonGenerator extends Blockly.CodeGenerator {
   }
 
   finish(code) {
-    const imports = IMPORT_ORDER.filter((m) => this.modules.has(m)).map((m) => `import ${m}\n`).join("");
+    const imports = IMPORT_ORDER.filter((m) => this.modules.has(m) && !this.imported?.has(m))
+      .map((m) => `import ${m}\n`).join("");
     const text = imports ? imports + "\n" + code : code;
     return text.replace(/\n+$/, "") + (text.trim() === "" ? "" : "\n");
   }
+}
+
+/**
+ * The modules a "Python code" block already imports: `import math` kept where it was written (below a docstring, or
+ * inside a function). The generator writes an import only for a program that has none; writing it again at the top
+ * would change the program (a second import, a docstring that is no longer first).
+ */
+function importedByCode(workspace) {
+  const found = new Set();
+  for (const block of workspace.getAllBlocks(false)) {
+    if (block.type !== "bf_code") continue;
+    for (const line of String(block.getFieldValue("TEXT") ?? "").split("\n")) {
+      const match = /^\s*import\s+([\w.,\s]+?)\s*(#.*)?$/.exec(line);   // import math / import os, sys, time
+      for (const name of match ? match[1].split(",").map((n) => n.trim()) : []) {
+        if (IMPORT_ORDER.includes(name)) found.add(name);
+      }
+    }
+  }
+  return found;
 }
 
 export function quote(text) {
