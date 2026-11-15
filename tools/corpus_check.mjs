@@ -71,7 +71,7 @@ const report = {};
 for (const spec of args) {
   const [name, folder] = spec.split(/=(.*)/s);
   const files = pythonFiles(folder);
-  const entry = { files: files.length, skipped: 0, refused: 0, crashed: [], lost: [], tidied: 0, exact: 0,
+  const entry = { files: files.length, skipped: 0, refused: 0, crashed: [], lost: [], tidied: 0, tidiedFiles: [], exact: 0,
     lines: 0, rawLines: 0, allBlocks: 0, ms: 0 };
   const texts = [];
   const names = [];
@@ -113,7 +113,7 @@ for (const spec of args) {
     });
     if (pairs.length) {
       python({ compare: pairs }).forEach((verdict, k) => {
-        if (verdict.ast && verdict.comments) entry.tidied += 1;
+        if (verdict.ast && verdict.comments) { entry.tidied += 1; entry.tidiedFiles.push(where[k]); }
         else entry.lost.push({ file: where[k], ast: verdict.ast, comments: verdict.comments, error: verdict.error });
       });
     }
