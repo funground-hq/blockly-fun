@@ -45,10 +45,19 @@ const STDIN = {
   p30_treasure_hunt: "e n n n n n e s s s s e n n n n e s s s s e n n n n".split(" ").join("\n") + "\n",
 };
 
-// The program runs in CPython as written; only time.sleep is made instant so a test does not wait.
+// The program runs in CPython as written; only time.sleep is made instant so a test does not wait. A sketch (phase
+// C+) runs with no window, and f.run() draws 30 frames and returns (funground's own max_frames), so it ends.
 const RUNNER = [
-  "import sys, time",
+  "import os, sys, time, inspect",
   "time.sleep = lambda seconds: None",
+  "os.environ['FUNGROUND_HEADLESS'] = '1'",
+  "try:",
+  "    import funground, funground.api",
+  "    def run(*, fps=None, max_frames=None):",
+  "        funground.api.canvas_sketch().run_namespace(inspect.currentframe().f_back.f_globals, fps=fps, max_frames=30)",
+  "    funground.run = run",
+  "except ImportError:",
+  "    pass",
   "source = open(sys.argv[1], encoding='utf-8').read()",
   "exec(compile(source, sys.argv[1], 'exec'), {'__name__': '__main__'})",
 ].join("\n");
@@ -64,7 +73,7 @@ const body = (code) => code.replace(/^r = /, "").trimEnd();
 test("there is a fixture for every program in contract/programs", () => {
   const programs = fs.readdirSync(PROGRAMS).filter((f) => f.endsWith(".py")).map((f) => f.slice(0, -3)).sort();
   assert.deepEqual(names, programs);
-  assert.equal(names.length, 27);
+  assert.equal(names.length, 29);
 });
 
 test("the table has a block for every definition and no id twice", () => {

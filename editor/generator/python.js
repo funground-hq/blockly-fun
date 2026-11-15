@@ -48,6 +48,7 @@ class PythonGenerator extends Blockly.CodeGenerator {
     super.init(workspace);
     this.modules = new Set();
     this.imported = importedByCode(workspace);
+    this.ending = null;
   }
 
   /** Asks for `import name` at the top of the program. */
@@ -112,14 +113,28 @@ class PythonGenerator extends Blockly.CodeGenerator {
       const part = this.blockToCode(block);
       if (typeof part === "string") code += part;
     }
-    return this.finish(code.replace(/^\n+/, ""));
+    this.ending = sketchEnding(tops.map(({ block }) => block));
+    return this.finish(code);
   }
 
+  /**
+   * The imports, then the code. After the imports one blank line always, and the first block's blank lines more (two
+   * before a def, as PEP 8 has it); with no imports the program starts at its first line.
+   */
   finish(code) {
-    const imports = IMPORT_ORDER.filter((m) => this.modules.has(m) && !this.imported?.has(m))
-      .map((m) => `import ${m}\n`).join("");
-    const text = imports ? imports + "\n" + code : code;
-    return text.replace(/\n+$/, "") + (text.trim() === "" ? "" : "\n");
+    // the standard library's modules, then funground (a group of its own, as PEP 8 and funground's examples have it)
+    const groups = [
+      IMPORT_ORDER.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `import ${m}\n`).join(""),
+      this.modules.has("funground") && !this.imported?.has("funground") ? "import funground as f\n" : "",
+    ].filter(Boolean);
+    let text = groups.length ? groups.join("\n") + "\n" + code : code.replace(/^\n+/, "");
+    text = text.replace(/\n+$/, "") + (text.trim() === "" ? "" : "\n");
+    // A sketch starts itself (BF-D-022): f.run() after an "every frame" hat, two blank lines below the code;
+    // f.show() straight after a drawing with none. Not when the program already does (f.run(fps=30), say).
+    if (this.modules.has("funground") && !this.imported?.has("funground") && !this.ending?.written) {
+      text += this.ending?.frame ? "\n\nf.run()\n" : "f.show()\n";
+    }
+    return text;
   }
 }
 
@@ -137,9 +152,31 @@ function importedByCode(workspace) {
       for (const name of match ? match[1].split(",").map((n) => n.trim()) : []) {
         if (IMPORT_ORDER.includes(name)) found.add(name);
       }
+      if (/^\s*import funground as f\s*(#.*)?$/.test(line)) found.add("funground");
     }
   }
   return found;
+}
+
+/**
+ * How a sketch ends: `frame` when an "every frame" hat is there (f.run()); `written` when a top-level statement
+ * already calls f.run(...) or f.show(...) (a general call block, or Python code), so the generator adds none.
+ */
+function sketchEnding(tops) {
+  let frame = false;
+  let written = false;
+  for (const top of tops) {
+    if (top.type === typeOf("sketch_frame")) frame = true;
+    for (let block = top; block; block = block.getNextBlock()) {
+      if (block.type === typeOf("method")) {
+        const object = block.getInputTargetBlock("OBJ");
+        if (object?.type === typeOf("variable") && object.getFieldValue("VAR") === "f"
+            && ["run", "show"].includes(block.getFieldValue("NAME"))) written = true;
+      }
+      if (block.type === typeOf("code") && /^f\.(run|show)\(/m.test(block.getFieldValue("TEXT"))) written = true;
+    }
+  }
+  return { frame, written };
 }
 
 export function quote(text) {
@@ -267,6 +304,74 @@ define("return", (b) => {
   return line(value ? `return ${value}` : "return");
 });
 
+// Drawing (phase C+, BF-D-022) ---------------------------------------------------------------------------------
+const VARIABLE_FIELD_BLOCKS = ["set", "change", "subtract", "variable", "count", "count_by", "for_each"].map(typeOf);
+const ASSIGNING = ["set", "change", "subtract"].map(typeOf);
+// The names a "Python code" text uses: comments and strings left out, and a name after a dot is an attribute.
+// The converter reads them the same way (to_blocks.py _CODE_NOISE, _CODE_NAME), so the global line round-trips.
+const CODE_NOISE = /"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|#[^\n]*/g;
+const CODE_NAME = /(?<![.\w])[A-Za-z_]\w*/g;
+
+/** A block and every block in it, in order: the block, its slots' blocks, then the block after it. */
+function* walk(block) {
+  yield block;
+  for (const input of block.inputList) {
+    const inner = input.connection?.targetBlock();
+    if (inner) yield* walk(inner);
+  }
+  const after = block.getNextBlock();
+  if (after) yield* walk(after);
+}
+
+/**
+ * The `global` names of a hat: those it sets (set, change, subtract) that the program also uses outside it, at the
+ * top or in the other hat, in the order the hat first sets them. Without the line Python would make each a new
+ * name inside the function, and draw() would never see what setup() set, nor keep a change from frame to frame.
+ */
+export function sharedNames(hat) {
+  const set = [];
+  for (const block of walk(hat)) {
+    if (ASSIGNING.includes(block.type) && !set.includes(block.getFieldValue("VAR"))) set.push(block.getFieldValue("VAR"));
+  }
+  if (!set.length) return [];
+  const outside = new Set();
+  for (const top of hat.workspace.getTopBlocks(false)) {
+    if (top === hat || top.outputConnection) continue;
+    for (const block of walk(top)) {
+      if (VARIABLE_FIELD_BLOCKS.includes(block.type)) outside.add(block.getFieldValue("VAR"));
+      if (block.type === typeOf("code") || block.type === typeOf("code_value")) {
+        const text = String(block.getFieldValue("TEXT")).replace(CODE_NOISE, " ");
+        for (const word of text.match(CODE_NAME) ?? []) outside.add(word);
+      }
+    }
+  }
+  return set.filter((name) => outside.has(name));
+}
+
+const hat = (header) => (b) => {
+  g.needs("funground");
+  if (g.headerOnly) return `${header}:\n`;
+  const shared = sharedNames(b);
+  const global = shared.length ? `${g.INDENT}global ${shared.join(", ")}\n` : "";
+  return `${header}:\n${global}${g.body(b, "DO")}`;
+};
+define("sketch_start", hat("def setup()"));
+define("sketch_frame", hat("def draw()"));
+
+const drawing = (id, name, slots) => define(id, (b) => {
+  g.needs("funground");
+  return line(`f.${name}(${slots.map((slot) => g.need(b, slot)).join(", ")})`);
+});
+drawing("canvas_size", "size", ["W", "H"]);
+drawing("background", "background", ["COLOR"]);
+drawing("fill", "fill", ["COLOR"]);
+drawing("outline", "stroke", ["COLOR"]);
+drawing("circle", "circle", ["X", "Y", "D"]);
+drawing("rectangle", "rect", ["X", "Y", "W", "H"]);
+drawing("line", "line", ["X1", "Y1", "X2", "Y2"]);
+drawing("write", "text", ["TEXT", "X", "Y"]);
+define("sketch_value", (b) => { g.needs("funground"); return [`f.${b.getFieldValue("WHAT")}`, ORDER.CALL]; });
+
 // Calling anything else ----------------------------------------------------------------------------------------
 const MODULES = new Set(IMPORT_ORDER);
 function argumentList(b) {
@@ -280,8 +385,7 @@ const methodCode = (b) => {
   const object = b.getInputTargetBlock("OBJ");
   if (object && object.type === typeOf("variable") && MODULES.has(object.getFieldValue("VAR"))) {
     g.needs(object.getFieldValue("VAR"));
-  }
-  return `${g.need(b, "OBJ", ORDER.CALL)}.${callCode(b)}`;
+  }  return `${g.need(b, "OBJ", ORDER.CALL)}.${callCode(b)}`;
 };
 // a call of a block the learner made: a count of positional arguments, a name that is only a label
 const ownCode = (b) => {

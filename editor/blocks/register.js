@@ -498,6 +498,7 @@ function definition(def, settings) {
   return {
     init() {
       this.bfData = { blank: 0, trailing: false };
+      if (def.hat) this.hat = "cap";   // a rounded top, as Scratch's "when ... clicked" (the renderer reads it)
       this.setColour(hueOf(def));
       this.setInputsInline(true);
       if (!isStatement) this.setOutput(true);

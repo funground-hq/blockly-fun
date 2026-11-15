@@ -262,3 +262,50 @@ def test_a_200_line_program_converts_quickly():
     elapsed = time.perf_counter() - started
     print(f"\n{text.count(chr(10))} lines in {elapsed * 1000:.1f} ms")
     assert elapsed < 1.0
+
+
+# -- a sketch: the drawing kit (phase C+, BF-D-022) ----------------------------------------------------------------
+
+SKETCH = "import funground as f\n\nx = 0\n\n\ndef draw():\n    global x\n\n    f.circle(x, 200, 40)\n    x += 1\n\n\nf.run()\n"
+
+
+def test_a_sketch_has_hats_and_drawing_blocks_and_the_generator_writes_import_and_run():
+    assert kinds(SKETCH) == ["set", "sketch_frame"]
+    frame = tops(SKETCH)[1]
+    body = list(chain(frame["inputs"]["DO"]["block"]))
+    assert [b["type"] for b in body] == ["bf_circle", "bf_change"]
+    assert body[0]["extraState"] == {"blank": 1}   # the blank line after `global x`
+
+
+def test_the_kit_needs_import_funground_as_f():
+    assert first("f.circle(1, 2, 3)\n")["type"] == "bf_method"
+    assert first("import funground as f\nf.circle(1, 2, 3)\nf.show()\n")["type"] == "bf_circle"
+    assert first("import funground\nfunground.circle(1, 2, 3)\n")["type"] == "bf_code"
+
+
+def test_sketch_values_and_other_attributes():
+    source = "import funground as f\n\nx = f.mouse_x\ny = f.key\nf.show()\n"
+    statements = list(chain(tops(source)[0]))
+    assert slot(statements[0], "VALUE") == {"type": "bf_sketch_value", "fields": {"WHAT": "mouse_x"}}
+    assert slot(statements[1], "VALUE")["type"] == "bf_code_value"
+
+
+def test_a_global_line_other_than_the_generators_keeps_an_ordinary_def():
+    # y is set in draw but used nowhere else: the generator would write `global x` only
+    source = "import funground as f\n\nx = 0\n\n\ndef draw():\n    global x, y\n\n    x += 1\n    y = 2\n\n\nf.run()\n"
+    assert "sketch_frame" not in kinds(source)
+    assert kinds(source) == ["code", "set", "def", "method"]   # nothing needs funground: its import stays code
+
+
+def test_an_ending_the_generator_would_not_write_stays_as_written():
+    # f.run() with no draw hat: the import stays Python code at the top, the ending a block of its own
+    source = "import funground as f\n\nf.circle(1, 2, 3)\nf.run()\n"
+    assert kinds(source) == ["code", "circle", "method"]
+    with_frames = "import funground as f\n\nf.circle(1, 2, 3)\nf.run(max_frames=5)\n"
+    assert kinds(with_frames)[-1] == "method"
+
+
+def test_a_comment_above_the_imports_keeps_them_as_written():
+    source = "# my sketch\nimport funground as f\n\nf.circle(1, 2, 3)\nf.show()\n"
+    assert kinds(source) == ["code", "circle", "method"]
+    assert tops(source)[0]["fields"]["TEXT"] == "import funground as f"

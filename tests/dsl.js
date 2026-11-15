@@ -126,6 +126,8 @@ export const val = {
   method: (object, methodName, ...items) => callBlock("method_value", methodName, items, object),
   /** Python with no block; order (a key of the generator's ORDER) is what the converter writes, if it knows it. */
   code: (source, order) => make("code_value", { fields: { TEXT: source }, extra: order ? { order } : undefined }),
+  /** f.mouse_x, f.mouse_y, f.width, f.height, f.frame_count (phase C+) */
+  sketch: (what) => make("sketch_value", { fields: { WHAT: what } }),
 };
 
 export const stmt = {
@@ -169,6 +171,17 @@ export const stmt = {
   own: (fnName, ...items) => ownBlock("own_call", fnName, items),
   method: (object, methodName, ...items) => callBlock("method", methodName, items, object),
   code: (source) => make("code", { fields: { TEXT: source } }),
+  // the drawing kit (phase C+, BF-D-022)
+  sketchStart: (body) => make("sketch_start", { body: { DO: body } }),
+  sketchFrame: (body) => make("sketch_frame", { body: { DO: body } }),
+  canvasSize: (w, h) => make("canvas_size", { inputs: { W: w, H: h } }),
+  background: (color) => make("background", { inputs: { COLOR: color } }),
+  fill: (color) => make("fill", { inputs: { COLOR: color } }),
+  outline: (color) => make("outline", { inputs: { COLOR: color } }),
+  circle: (x, y, d) => make("circle", { inputs: { X: x, Y: y, D: d } }),
+  rectangle: (x, y, w, h) => make("rectangle", { inputs: { X: x, Y: y, W: w, H: h } }),
+  line: (x1, y1, x2, y2) => make("line", { inputs: { X1: x1, Y1: y1, X2: x2, Y2: y2 } }),
+  write: (message, x, y) => make("write", { inputs: { TEXT: message, X: x, Y: y } }),
 };
 
 /** A list of statements as one stack. */

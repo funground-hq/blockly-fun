@@ -2,7 +2,7 @@
 //
 // Per block:
 //   type      the id, without the "bf_" prefix that register.js adds
-//   kind      "statement" or "value"; top: true = a stack of its own (a def)
+//   kind      "statement" or "value"; top: true = a stack of its own (a def); hat: true = drawn with a rounded top
 //   cat       the category (CATEGORIES)
 //   scratch   the label in Scratch's words
 //   python    the label in Python's words
@@ -28,6 +28,7 @@ export const CATEGORIES = [
   { id: "control", name: "Control", colour: 40 },
   { id: "lists", name: "Lists and text", colour: 15 },
   { id: "functions", name: "Your own blocks", colour: 260 },
+  { id: "drawing", name: "Drawing", colour: 60 },
   { id: "calls", name: "Calling anything else", colour: 185 },
   { id: "code", name: "Python code", colour: "#6e6e6e" },
 ];
@@ -221,6 +222,48 @@ export const BLOCKS = [
   { type: "own_call", kind: "statement", ...OWN_CALL },
   { type: "own_call_value", kind: "value", ...OWN_CALL },
 
+  // Drawing (phase C+, BF-D-022): a sketch with funground, `import funground as f`. The two hats are setup() and
+  // draw(); the generator writes the import, the `global` line of each hat and the f.run() (or f.show()) at the end.
+  {
+    type: "sketch_start", kind: "statement", top: true, hat: true, cat: "drawing", body: ["DO"],
+    scratch: "when the sketch starts", python: "def setup()", line: "def setup():",
+  },
+  {
+    type: "sketch_frame", kind: "statement", top: true, hat: true, cat: "drawing", body: ["DO"],
+    scratch: "every frame", python: "def draw()", line: "def draw():",
+  },
+  { type: "canvas_size", kind: "statement", cat: "drawing", scratch: "canvas size {W} by {H}", python: "f.size({W}, {H})", line: "f.size(W, H)" },
+  { type: "background", kind: "statement", cat: "drawing", scratch: "background {COLOR}", python: "f.background({COLOR})", line: "f.background(x)" },
+  { type: "fill", kind: "statement", cat: "drawing", scratch: "fill colour {COLOR}", python: "f.fill({COLOR})", line: "f.fill(x)" },
+  { type: "outline", kind: "statement", cat: "drawing", scratch: "outline colour {COLOR}", python: "f.stroke({COLOR})", line: "f.stroke(x)" },
+  {
+    type: "circle", kind: "statement", cat: "drawing",
+    scratch: "circle at x {X} y {Y} size {D}", python: "f.circle({X}, {Y}, {D})", line: "f.circle(x, y, d)",
+  },
+  {
+    type: "rectangle", kind: "statement", cat: "drawing",
+    scratch: "rectangle at x {X} y {Y} width {W} height {H}", python: "f.rect({X}, {Y}, {W}, {H})", line: "f.rect(x, y, w, h)",
+  },
+  {
+    type: "line", kind: "statement", cat: "drawing",
+    scratch: "line from x {X1} y {Y1} to x {X2} y {Y2}", python: "f.line({X1}, {Y1}, {X2}, {Y2})", line: "f.line(x1, y1, x2, y2)",
+  },
+  {
+    type: "write", kind: "statement", cat: "drawing",
+    scratch: "write {TEXT} at x {X} y {Y}", python: "f.text({TEXT}, {X}, {Y})", line: "f.text(t, x, y)",
+  },
+  {
+    type: "sketch_value", kind: "value", cat: "drawing",
+    fields: {
+      WHAT: {
+        kind: "dropdown", default: "mouse_x",
+        options: [opt("mouse_x", "mouse x", "f.mouse_x"), opt("mouse_y", "mouse y", "f.mouse_y"), opt("width", "width", "f.width"),
+          opt("height", "height", "f.height"), opt("frame_count", "frame count", "f.frame_count")],
+      },
+    },
+    scratch: "[WHAT]", python: "[WHAT]", line: null,
+  },
+
   // Calling anything else
   { type: "call", kind: "statement", ...CALL_FN },
   { type: "call_value", kind: "value", ...CALL_FN },
@@ -282,6 +325,14 @@ export const DEFAULTS = {
   length: { X: text("Hello") },
   contains: { LIST: name("list"), X: text("a") },
   return: { VALUE: number(0) },
+  canvas_size: { W: number(640), H: number(400) },
+  background: { COLOR: text("white") },
+  fill: { COLOR: text("tomato") },
+  outline: { COLOR: text("black") },
+  circle: { X: number(320), Y: number(200), D: number(80) },
+  rectangle: { X: number(100), Y: number(100), W: number(200), H: number(120) },
+  line: { X1: number(0), Y1: number(0), X2: number(640), Y2: number(400) },
+  write: { TEXT: text("Hello!"), X: number(20), Y: number(40) },
   method: { OBJ: name("x") },
   method_value: { OBJ: name("x") },
 };

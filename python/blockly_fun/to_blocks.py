@@ -38,6 +38,30 @@ PREFIX = "bf_"
 # Modules a named block needs; the generator writes their imports at the top itself.
 IMPORT_ORDER = ("math", "random", "time")
 
+# Phase C+ (BF-D-022): funground's drawing kit, for a program that starts with `import funground as f`.
+# (method, number of arguments) -> (block, its slots in order)
+_DRAWING = {
+    ("size", 2): ("canvas_size", ("W", "H")),
+    ("background", 1): ("background", ("COLOR",)),
+    ("fill", 1): ("fill", ("COLOR",)),
+    ("stroke", 1): ("outline", ("COLOR",)),
+    ("circle", 3): ("circle", ("X", "Y", "D")),
+    ("rect", 4): ("rectangle", ("X", "Y", "W", "H")),
+    ("line", 4): ("line", ("X1", "Y1", "X2", "Y2")),
+    ("text", 3): ("write", ("TEXT", "X", "Y")),
+}
+_SKETCH_VALUES = ("mouse_x", "mouse_y", "width", "height", "frame_count")
+_HATS = {"setup": "sketch_start", "draw": "sketch_frame"}
+_TOP_BLOCKS = {"bf_def", "bf_sketch_start", "bf_sketch_frame"}   # each a stack of its own (BF-D-013)
+_KIT = {PREFIX + kind for kind in (*_HATS.values(), *(kind for kind, _ in _DRAWING.values()), "sketch_value")}
+
+# The names a "Python code" block's text uses, as the generator reads them (python.js sharedNames): comments and
+# strings left out, and a name after a dot is an attribute, not a name.
+_CODE_NOISE = re.compile(r"\"\"\"[\s\S]*?\"\"\"|'''[\s\S]*?'''|\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|#[^\n]*")
+_CODE_NAME = re.compile(r"(?<![.\w])[A-Za-z_]\w*")
+_VARIABLE_FIELD_BLOCKS = {PREFIX + t for t in ("set", "change", "subtract", "variable", "count", "count_by", "for_each")}
+_ASSIGNING = {PREFIX + t for t in ("set", "change", "subtract")}
+
 _ARITH = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/"}
 _BINARY_BLOCK = {ast.FloorDiv: "floordiv", ast.Mod: "mod", ast.Pow: "power"}
 _COMPARE = {ast.Eq: "==", ast.NotEq: "!=", ast.Lt: "<", ast.Gt: ">", ast.LtE: "<=", ast.GtE: ">="}
@@ -116,6 +140,37 @@ def count_code_blocks(workspace: dict) -> int:
         after = count(block["next"]["block"]) if "next" in block else 0
         return own + inner + after
     return sum(count(top) for top in workspace.get("blocks", {}).get("blocks", []))
+
+
+def _walk(block: dict):
+    """A block and every block in it, in order: the block, its slots' blocks, then the block after it."""
+    yield block
+    for value in block.get("inputs", {}).values():
+        inner = value.get("block") or value.get("shadow")
+        if inner:
+            yield from _walk(inner)
+    after = block.get("next", {}).get("block")
+    if after:
+        yield from _walk(after)
+
+
+def _shared_names(hat: dict, others: list[dict]) -> list[str]:
+    """The `global` names of a hat, by python.js sharedNames' rule: the names it sets (set, change, subtract) that
+    the other top blocks use (a variable field, or a name in a "Python code" text), in the order it first sets them."""
+    assigned: list[str] = []
+    for block in _walk(hat):
+        if block["type"] in _ASSIGNING and block["fields"]["VAR"] not in assigned:
+            assigned.append(block["fields"]["VAR"])
+    if not assigned:
+        return []
+    outside: set[str] = set()
+    for top in others:
+        for block in _walk(top):
+            if block["type"] in _VARIABLE_FIELD_BLOCKS:
+                outside.add(block["fields"]["VAR"])
+            if block["type"] in (PREFIX + "code", PREFIX + "code_value"):
+                outside.update(_CODE_NAME.findall(_CODE_NOISE.sub(" ", block["fields"]["TEXT"])))
+    return [name for name in assigned if name in outside]
 
 
 def _parses_alone(text: str) -> bool:
@@ -206,6 +261,9 @@ class _Converter:
                               if isinstance(node, ast.FunctionDef) and self._is_simple_def(node)}
         self.kept_whole = self._top_statements_kept_whole()
         self.indent = ""  # the indentation of the statement being converted (its value's lines are written under it)
+        self.funground = False  # the program starts with `import funground as f`: the drawing kit's blocks apply
+        self.hats: list[tuple[dict, ast.FunctionDef, list[str]]] = []  # each hat made, its def, its global names
+        self.hats_off = False
 
     def _top_statements_kept_whole(self) -> set[int]:  # ids of the statements
         """
@@ -243,13 +301,37 @@ class _Converter:
 
     def workspace(self) -> dict:
         imports = self._taken_imports()
+        # Imports below a comment (a file's header) stay as written, so the comment stays above them.
+        if imports and any(row < imports[0].lineno for row in self.comments):
+            imports = []
+        # The kit's blocks apply wherever the program imports funground as f at the top level (below a docstring
+        # too); the generator writes the import and the ending only when it took the import in.
+        self.funground = any(isinstance(node, ast.Import) and len(node.names) == 1
+                             and (node.names[0].name, node.names[0].asname) == ("funground", "f") for node in self.tree.body)
         statements = self.tree.body[len(imports):]
         pieces = self._statements(statements, anchor=0, limit=len(self.lines), top=True)
+        self._check_hats([block for block, _ in pieces])
+        if not any(block["type"] in _KIT for piece, _ in pieces for block in _walk(piece)):
+            self.needs.discard("funground")   # a hat converted again as a def leaves nothing of the kit
 
-        # Each "make a block" is a stack of its own; the statements between them are a stack (BF-D-013).
+        # A sketch's `import funground as f` and its ending are the generator's to write when the blocks need
+        # funground and the ending is the one it writes: f.run() after an "every frame" hat, f.show() without one.
+        # Otherwise both stay as written (the import as Python code at the top, the ending a block of its own).
+        taken = any(node.names[0].name == "funground" for node in imports)
+        ending = self._ending(statements) if taken and "funground" in self.needs else None
+        if ending is not None:
+            frame = any(block["type"] == PREFIX + "sketch_frame" for block, _ in pieces)
+            if (ending.value.func.attr == "run") == frame:
+                pieces = [piece for piece in pieces if piece[1] != ending.lineno]
+            else:
+                ending = None
+        if ending is None:
+            self.needs.discard("funground")
+
+        # Each "make a block" and each hat is a stack of its own; the statements between them are a stack (BF-D-013).
         stacks: list[list[tuple[dict, int]]] = []
         for piece in pieces:
-            if piece[0]["type"] == PREFIX + "def" or not stacks or stacks[-1][0][0]["type"] == PREFIX + "def":
+            if piece[0]["type"] in _TOP_BLOCKS or not stacks or stacks[-1][0][0]["type"] in _TOP_BLOCKS:
                 stacks.append([piece])
             else:
                 stacks[-1].append(piece)
@@ -261,10 +343,14 @@ class _Converter:
         if not stacks:
             return {}
 
-        # The generator writes the imports, one blank line, then the program: its first block has no blank lines.
+        # The generator writes the imports it took in, one blank line, then the program from its first block's blank
+        # lines on (two before a def, as PEP 8 has it, is one more). With no imports to write, the first block has none.
         first = stacks[0][0][0]
         if "blank" in first.get("extraState", {}):
-            del first["extraState"]["blank"]
+            written = not unused and len(imports) > 0
+            first["extraState"]["blank"] -= 1 if written else first["extraState"]["blank"]
+            if not first["extraState"]["blank"]:
+                del first["extraState"]["blank"]
             if not first["extraState"]:
                 del first["extraState"]
 
@@ -276,14 +362,64 @@ class _Converter:
         return {"blocks": {"languageVersion": 0, "blocks": tops}}
 
     def _taken_imports(self) -> list[ast.Import]:
-        """The `import math` / `random` / `time` lines at the very top: the generator writes these itself."""
+        """The `import math` / `random` / `time` and `import funground as f` lines at the very top: the generator
+        writes these itself."""
         taken = []
         for node in self.tree.body:
-            if not (isinstance(node, ast.Import) and len(node.names) == 1 and node.names[0].asname is None
-                    and node.names[0].name in IMPORT_ORDER and node.lineno not in self.comments):
+            if not (isinstance(node, ast.Import) and len(node.names) == 1 and node.lineno not in self.comments):
+                break
+            alias = node.names[0]
+            if not (alias.asname is None and alias.name in IMPORT_ORDER or (alias.name, alias.asname) == ("funground", "f")):
                 break
             taken.append(node)
         return taken
+
+    # -- a sketch (phase C+, BF-D-022) ----------------------------------------------------------------------------
+
+    def _hat(self, node: ast.FunctionDef) -> dict | None:
+        """`def setup():` or `def draw():` as its hat, without the `global` line the generator writes itself (checked
+        against the blocks once the program is converted: _check_hats). None when it cannot be one."""
+        if self.hats_off or not (self.funground and node.name in _HATS and self._is_simple_def(node) and not node.args.args):
+            return None
+        body, anchor = node.body, self._header_end(node)
+        written: list[str] = []
+        if isinstance(body[0], ast.Global):
+            if len(body) == 1 or any(row in self.comments for row in range(anchor + 1, body[0].end_lineno + 1)):
+                return None   # nothing after it, or a comment that would go with the line
+            written, anchor, body = list(body[0].names), body[0].end_lineno, body[1:]
+        self.needs.add("funground")
+        block = _block(_HATS[node.name], inputs=self._body("DO", body, anchor, self._next_code_row(node.end_lineno) - 1))
+        self.hats.append((block, node, written))
+        return block
+
+    def _check_hats(self, tops: list[dict]) -> None:
+        """Each hat's `global` line as written must be the one the generator writes for its blocks (python.js
+        sharedNames); otherwise the def is converted again as an ordinary def, so the program stays the same."""
+        for block, node, written in self.hats:
+            if _shared_names(block, [top for top in tops if top is not block]) == written:
+                continue
+            kept = {key: block[key] for key in ("extraState", "icons") if key in block}
+            block.clear()
+            self.hats_off = True   # converted again as an ordinary def, not as a hat: its own comments placed again
+            self.used -= set(range(self._header_end(node) + 1, node.end_lineno + 1))
+            block.update(self._statement_block(node, top=True) or self._code_statement(node))
+            self.hats_off = False
+            block.update(kept)
+
+    def _ending(self, statements: list[ast.stmt]) -> ast.stmt | None:
+        """The `f.run()` or `f.show()` a sketch ends with, which the generator writes itself (with no comment of its
+        own: a comment above it or at its end would go with it)."""
+        if not statements:
+            return None
+        last = statements[-1]
+        call = last.value if isinstance(last, ast.Expr) else None
+        if not (isinstance(call, ast.Call) and not call.args and not call.keywords
+                and isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
+                and call.func.value.id == "f" and call.func.attr in ("run", "show")):
+            return None
+        if last.lineno in self.comments or last.lineno - 1 in self.comments:
+            return None
+        return last
 
     # -- lists of statements, with their comments and blank lines ------------------------------------------------
 
@@ -513,6 +649,8 @@ class _Converter:
             return _block("continue")
         if isinstance(node, ast.Return):
             return _block("return", inputs=self._inputs(optional={"VALUE"}, VALUE=node.value))
+        if isinstance(node, ast.FunctionDef) and top and (hat := self._hat(node)) is not None:
+            return hat
         if isinstance(node, ast.FunctionDef) and top and node.name in self.own_functions:
             params = ", ".join(a.arg for a in node.args.args)
             return _block("def", fields={"NAME": node.name, "PARAMS": params}, inputs=self._body_of(node))
@@ -535,6 +673,11 @@ class _Converter:
             if func.id in self.own_functions and positional_only:
                 return self._own("own_call", func.id, args)
             return self._call("call", call)
+        if (self.funground and positional_only and isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                and func.value.id == "f" and (func.attr, len(args)) in _DRAWING):
+            kind, slots = _DRAWING[func.attr, len(args)]
+            self.needs.add("funground")
+            return _block(kind, inputs=self._inputs(**dict(zip(slots, args))))
         if isinstance(func, ast.Attribute) and positional_only and len(args) == 1:
             target, method = func.value, func.attr
             if isinstance(target, ast.Name) and target.id == "time" and method == "sleep":
@@ -754,6 +897,10 @@ class _Converter:
             if any(isinstance(e, ast.Starred) for e in node.elts):
                 return None
             return self._items("list_of", node.elts) if node.elts else _block("empty_list")
+        if (self.funground and isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                and node.value.id == "f" and node.attr in _SKETCH_VALUES):
+            self.needs.add("funground")
+            return _block("sketch_value", fields={"WHAT": node.attr})
         return None
 
     def _constant(self, node: ast.Constant) -> dict | None:
