@@ -4,11 +4,20 @@
 //                                 (only with Scratch words: with Python words the label is the Python)
 // The settings change only what a block shows. Block types, fields and inputs stay the same, so a workspace saved
 // as JSON loads under either setting and makes the same Python.
+//
+// A third setting, `catalogue` (funground's catalogue, Funground_Calls_Note.md), changes only how the two general call
+// blocks and the attribute block are shown and edited: a searchable name list, labelled slots, a tooltip and Help. Their
+// JSON and Python are exactly what they are without it. (Choosing a name that has a kit block puts that block in: BF-6.)
 
 import * as Blockly from "blockly";
-import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS } from "./table.js";
+import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX } from "./table.js";
+import { createCatalogue } from "../catalogue/index.js";
+import { FieldCatalogueName } from "../catalogue/field.js";
+import { isBareCall, lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
+import { defaultFor } from "../catalogue/slots.js";
+import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
 
-export const PREFIX = "bf_";
+export { PREFIX };
 export const typeOf = (id) => PREFIX + id;
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -104,7 +113,7 @@ export class FieldName extends Blockly.FieldDropdown {
 
 // The grey line of Python under a statement's label: the block's own first line, with its real values.
 // Measured at its own small font, so its row is only as tall as its text.
-const LINE_HEIGHT = 11;
+const LINE_HEIGHT = 14;
 const LINE_MAX = 40;
 let lineProvider = null;
 
@@ -178,10 +187,19 @@ export function watchLines(workspace) {
   });
 }
 
-function makeField(spec, words) {
+function makeField(spec, rows) {
+  const { words, settings } = rows;
   switch (spec.kind) {
     case "var": return new FieldName(spec.default);
-    case "name": return new Blockly.FieldTextInput(spec.default, nameValidator);
+    case "name":
+      if (spec.catalogue && settings.catalogue) {
+        return new FieldCatalogueName(spec.default, nameValidator, {
+          catalogue: settings.catalogue,
+          scratch: words === "scratch",
+          onChoose: (block, entry) => chooseEntry(block, entry, rows.def, settings),
+        });
+      }
+      return new Blockly.FieldTextInput(spec.default, nameValidator);
     case "number": return new Blockly.FieldTextInput(spec.default, numberValidator);
     case "label": return new Blockly.FieldLabelSerializable(spec.default);
     case "params": return new Blockly.FieldTextInput(spec.default, paramsValidator);
@@ -194,7 +212,7 @@ function makeField(spec, words) {
 // ---------------------------------------------------------------------------------------------------------------
 // Style
 
-const CSS = ".injectionDiv .blocklyText.bf-python-line { fill: #d9d9d9; font-size: 8pt; font-weight: normal; font-family: monospace; }";
+const CSS = ".injectionDiv .blocklyText.bf-python-line { fill: #fff; fill-opacity: .85; font-size: 10pt; font-weight: normal; font-family: monospace; }";
 
 function injectStyle() {
   if (typeof document === "undefined" || document.getElementById("bf-style")) return;
@@ -216,12 +234,16 @@ class Rows {
     this.pending = [];
   }
 
+  /** Adds a label; gives the field (null for no text). */
   text(str) {
-    if (str) this.pending.push([new Blockly.FieldLabel(str), undefined]);
+    if (!str) return null;
+    const field = new Blockly.FieldLabel(str);
+    this.pending.push([field, undefined]);
+    return field;
   }
 
   field(name) {
-    this.pending.push([makeField(this.def.fields[name], this.words), name]);
+    this.pending.push([makeField(this.def.fields[name], this), name]);
   }
 
   flush(input) {
@@ -269,7 +291,8 @@ function layout(block, def, settings, state) {
   rows.def = def;
   // value blocks have no line (the parent's line shows their code); Python words are the Python already
   rows.showLines = settings.pythonLine && settings.words === "scratch" && def.kind === "statement";
-  const words = def[settings.words];
+  // with the catalogue a call block may word its head differently ("f . text align")
+  const words = (settings.catalogue && def.catalogue?.[settings.words]) || def[settings.words];
 
   if (def.mutator === "if") {
     for (let i = 0; i <= state.elifs; i++) {
@@ -288,8 +311,13 @@ function layout(block, def, settings, state) {
   if (def.mutator === "items" || def.mutator === "args" || def.own) {
     const kinds = def.mutator === "args" ? state.args : Array(def.own ? state.args : state.items).fill("p");
     rows.tokens(words.head);
+    // slot labels (section 7): the words before each positional slot become the parameter's name once it is known
+    const labelled = settings.catalogue && settings.words === "scratch" && def.mutator === "args";
+    block.bfSlotLabels = labelled ? [] : undefined;
     kinds.forEach((kind, i) => {
-      rows.text(i === 0 ? words.first : words.sep);
+      const plain = i === 0 ? words.first : words.sep;
+      const label = rows.text(plain);
+      if (labelled && label) block.bfSlotLabels[i] = { field: label, plain, positional: kind === "p" };
       if (kind === "k") {
         rows.pending.push([new Blockly.FieldTextInput("key", nameValidator), "KW" + i]);
         rows.text("=");
@@ -340,6 +368,83 @@ function rebuild(block, def, settings, state, remap = new Map(), strict = false)
     const input = mapped ? block.getInput(mapped) : null;
     if (input && input.connection) input.connection.connect(target);
     else target.getSourceBlock().dispose(false);
+  }
+  if (block.bfCatalogue) refreshCall(block);
+}
+
+/**
+ * A row was chosen in the name list. A name with a kit block that fits puts the kit block in the general block's place
+ * (BF-6); any other name builds the call's slots (an attribute block has none to build).
+ */
+function chooseEntry(block, entry, def, settings) {
+  const kit = isBareCall(block) ? null : kitFor(entry);   // a bare name is not `f.name`: no kit block
+  if (kit && kitFits(block, entry, kit)) swapForKit(block, kit);
+  else if (block.bfState?.args) adoptSignature(block, def, settings, entry);
+}
+
+/**
+ * Puts the kit block in the place of a general block, in one undo step. The arguments the general block has move over
+ * one to one (kitFits has seen to it that they fit); with none, the kit block comes with the toolbox's values. The
+ * block keeps its place (in its stack, in its slot, or on the page), its comment and its blank lines.
+ */
+function swapForKit(block, kit) {
+  const { def, fields } = kit;
+  const workspace = block.workspace;
+  const inputs = {};
+  slotNames(def).forEach((slot, i) => {
+    const connection = block.getInput("ARG" + i)?.connection;
+    const child = connection?.targetBlock();
+    if (child && !child.isShadow()) inputs[slot] = { block: Blockly.serialization.blocks.save(child, { saveIds: false }) };
+    else if (child) inputs[slot] = { shadow: connection.getShadowState(true) };
+  });
+  const state = block.bfState?.args?.length ? { type: typeOf(def.type), inputs } : toolboxBlock(def.type);
+  if (fields && Object.keys(fields).length) state.fields = fields;
+  const where = block.getRelativeToSurfaceXY();
+  const wasGroup = Blockly.Events.getGroup();
+  Blockly.Events.setGroup(true);
+  try {
+    const next = Blockly.serialization.blocks.append(state, workspace, { recordUndo: true });
+    const place = block.previousConnection?.targetConnection ?? block.outputConnection?.targetConnection ?? null;
+    block.unplug(true);
+    if (place) place.connect(next.previousConnection ?? next.outputConnection);
+    else next.moveBy(where.x, where.y);
+    if (next.bfData && block.bfData) next.bfData = { ...block.bfData };
+    const comment = block.getCommentText();
+    if (comment !== null && comment !== undefined) next.setCommentText(comment);
+    block.dispose(false);
+  } finally {
+    Blockly.Events.setGroup(wasGroup);
+  }
+}
+
+/**
+ * A name was chosen from the catalogue's list (section 7): the required arguments become slots, each with a value that
+ * runs. Optional ones are not added: the gear still adds them, as keywords. Slots already there are kept, so choosing
+ * again never takes away what the learner filled in.
+ */
+function adoptSignature(block, def, settings, entry) {
+  const required = entry.params.filter((p) => p.required);
+  const args = block.bfState.args;
+  const positional = args.filter((kind) => kind === "p").length;
+  const added = required.length - positional;
+  if (added <= 0) return;
+  const before = JSON.stringify(block.saveExtraState() ?? {});
+  // positional slots come before keyword ones, which move along
+  const next = [...args.slice(0, positional), ...Array(added).fill("p"), ...args.slice(positional)];
+  const remap = new Map();
+  for (let j = positional; j < args.length; j++) {
+    remap.set("ARG" + j, "ARG" + (j + added));
+    remap.set("KW" + j, "KW" + (j + added));
+  }
+  rebuild(block, def, settings, { args: next }, remap);
+  for (let k = 0; k < added; k++) {
+    const value = defaultFor(settings.catalogue, entry, required[positional + k]);
+    if (value) block.getInput("ARG" + (positional + k)).connection.setShadowState(shadowOf(value).shadow);
+  }
+  refreshCall(block);
+  const after = JSON.stringify(block.saveExtraState() ?? {});
+  if (block.workspace.rendered && before !== after) {
+    Blockly.Events.fire(new Blockly.Events.BlockChange(block, "mutation", null, before, after));
   }
 }
 
@@ -498,6 +603,7 @@ function definition(def, settings) {
   return {
     init() {
       this.bfData = { blank: 0, trailing: false };
+      this.bfCatalogue = def.mutator === "args" || def.property ? settings.catalogue : undefined;
       if (def.hat) this.hat = "cap";   // a rounded top, as Scratch's "when ... clicked" (the renderer reads it)
       this.setColour(hueOf(def));
       this.setInputsInline(true);
@@ -509,6 +615,13 @@ function definition(def, settings) {
       this.bfState = initialState(def);
       layout(this, def, settings, this.bfState);
       if (typeof def.line === "string") this.setTooltip(fillTemplate(def.line, this));
+      if (this.bfCatalogue) {
+        // the signature and the plain sentence, looked up when the tooltip shows (section 7)
+        this.setTooltip(() => {
+          const entry = lookupEntry(this, this.bfCatalogue, true);
+          return entry ? tooltipOf(entry) : fillTemplate(def.line, this);
+        });
+      }
       if (def.mutator) this.setMutator(new Blockly.icons.MutatorIcon(MUTATOR_ITEMS[def.mutator].map((i) => PREFIX + "m_" + i), this));
     },
 
@@ -570,13 +683,14 @@ function definition(def, settings) {
 let registeredAs = null;
 
 /** Registers (or registers again) every block for these settings. */
-export function registerBlocks({ words = "scratch", pythonLine = true } = {}) {
+export function registerBlocks({ words = "scratch", pythonLine = true, catalogue = null, helpBase = null } = {}) {
   if (words !== "scratch" && words !== "python") throw new Error(`words must be "scratch" or "python", not ${words}`);
   injectStyle();
   registerMutatorBlocks();
   // With Python words there is never a Python line, whatever was asked for
   const settings = { words, pythonLine: words === "scratch" && !!pythonLine };
-  for (const def of BLOCKS) Blockly.Blocks[typeOf(def.type)] = definition(def, settings);
+  const full = { ...settings, catalogue: catalogue ? createCatalogue(catalogue, { helpBase }) : null };
+  for (const def of BLOCKS) Blockly.Blocks[typeOf(def.type)] = definition(def, full);
   registeredAs = settings;
   return settings;
 }

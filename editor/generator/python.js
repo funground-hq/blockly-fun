@@ -35,6 +35,8 @@ export const ORDER = {
 const BELOW_RELATIONAL = ORDER.RELATIONAL - 1;
 
 const IMPORT_ORDER = ["math", "random", "time"];
+// funground's libraries, imported as `from funground import sound`; the lines are written in this (alphabetical) order
+const LIBRARIES = ["camera", "ml", "sangeet", "sound"];
 
 class PythonGenerator extends Blockly.CodeGenerator {
   constructor() {
@@ -108,26 +110,33 @@ class PythonGenerator extends Blockly.CodeGenerator {
       .filter((block) => !block.outputConnection)
       .map((block) => ({ block, at: block.getRelativeToSurfaceXY() }))
       .sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x);
+    // The header (a docstring and/or comments, the first stack) is written above the imports (BF-7).
+    const header = tops.length && isHeader(tops[0].block) ? this.blockToCode(tops.shift().block) : "";
     let code = "";
     for (const { block } of tops) {
       const part = this.blockToCode(block);
       if (typeof part === "string") code += part;
     }
     this.ending = sketchEnding(tops.map(({ block }) => block));
-    return this.finish(code);
+    return this.finish(code, header);
   }
 
   /**
-   * The imports, then the code. After the imports one blank line always, and the first block's blank lines more (two
-   * before a def, as PEP 8 has it); with no imports the program starts at its first line.
+   * The header, the imports, then the code. After the imports one blank line always, and the first block's blank lines
+   * more (two before a def, as PEP 8 has it); no blank line between the header and the imports (156 of the 183 examples with a header and an import have none); with no imports the
+   * program starts at its first line, or follows the header.
    */
-  finish(code) {
+  finish(code, header = "") {
     // the standard library's modules, then funground (a group of its own, as PEP 8 and funground's examples have it)
     const groups = [
       IMPORT_ORDER.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `import ${m}\n`).join(""),
-      this.modules.has("funground") && !this.imported?.has("funground") ? "import funground as f\n" : "",
+      // `import funground as f`, then one `from funground import name` for each library the program calls
+      (this.modules.has("funground") && !this.imported?.has("funground") ? "import funground as f\n" : "")
+        + LIBRARIES.filter((m) => this.modules.has(m) && !this.imported?.has(m)).map((m) => `from funground import ${m}\n`).join(""),
     ].filter(Boolean);
-    let text = groups.length ? groups.join("\n") + "\n" + code : code.replace(/^\n+/, "");
+    header = header.replace(/^\n+/, "");
+    let text = groups.length ? header + groups.join("\n") + "\n" + code
+      : header + (header ? code : code.replace(/^\n+/, ""));
     text = text.replace(/\n+$/, "") + (text.trim() === "" ? "" : "\n");
     // A sketch starts itself (BF-D-022): f.run() after an "every frame" hat, two blank lines below the code;
     // f.show() straight after a drawing with none. Not when the program already does (f.run(fps=30), say).
@@ -136,6 +145,25 @@ class PythonGenerator extends Blockly.CodeGenerator {
     }
     return text;
   }
+}
+
+// A string on its own, a docstring: not `"a".join(x)` or `"a" "b"`. to_blocks.py has the same pattern.
+const STRING_STATEMENT = /^[rRuU]?(?:"{3}(?:[^"\\]|\\[\s\S]|"(?!""))*"{3}|'{3}(?:[^'\\]|\\[\s\S]|'(?!''))*'{3}|"(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*')$/;
+
+/**
+ * Whether a top block heads a header (BF-7): a stack of "Python code" blocks that are comment lines, and at most one
+ * string (the docstring), as the converter makes them. The generator writes it above the imports; any other first
+ * stack starts the program, and the imports go above it.
+ */
+function isHeader(top) {
+  let strings = 0;
+  for (let block = top; block; block = block.getNextBlock()) {
+    const text = block.type === typeOf("code") ? String(block.getFieldValue("TEXT") ?? "") : "";
+    if (!text.trim()) return false;
+    if (text.split("\n").every((line) => line.trimStart().startsWith("#"))) continue;
+    if (++strings > 1 || !STRING_STATEMENT.test(text)) return false;
+  }
+  return true;
 }
 
 /**
@@ -154,19 +182,31 @@ function importedByCode(workspace) {
       }
       if (/^\s*import funground as f\s*(#.*)?$/.test(line)) found.add("funground");
     }
+    // from funground import ml, sound / sound as s / (ml,\n sound) / *: each library named, whatever it is renamed to
+    const text = String(block.getFieldValue("TEXT") ?? "");
+    for (const match of text.matchAll(/^[ \t]*from[ \t]+funground[ \t]+import[ \t]+(\([^)]*\)|[^\n]*)/gm)) {
+      for (const part of match[1].replace(/#[^\n]*/g, "").replace(/[()]/g, "").split(",")) {
+        const name = part.trim().split(/\s+/)[0];
+        if (LIBRARIES.includes(name)) found.add(name);
+        if (name === "*") LIBRARIES.forEach((library) => found.add(library));
+      }
+    }
   }
   return found;
 }
 
+// The hats that need the loop: f.run() ends a program that has one (f.show() draws once and stops)
+const FRAME_HATS = ["sketch_frame", "key_pressed", "mouse_pressed"].map(typeOf);
+
 /**
- * How a sketch ends: `frame` when an "every frame" hat is there (f.run()); `written` when a top-level statement
+ * How a sketch ends: `frame` when an "every frame" hat or an event hat is there (f.run(): the events need the loop, BF-D-034); `written` when a top-level statement
  * already calls f.run(...) or f.show(...) (a general call block, or Python code), so the generator adds none.
  */
 function sketchEnding(tops) {
   let frame = false;
   let written = false;
   for (const top of tops) {
-    if (top.type === typeOf("sketch_frame")) frame = true;
+    if (FRAME_HATS.includes(top.type)) frame = true;
     for (let block = top; block; block = block.getNextBlock()) {
       if (block.type === typeOf("method")) {
         const object = block.getInputTargetBlock("OBJ");
@@ -357,6 +397,8 @@ const hat = (header) => (b) => {
 };
 define("sketch_start", hat("def setup()"));
 define("sketch_frame", hat("def draw()"));
+define("key_pressed", hat("def key_pressed()"));       // BF-D-034
+define("mouse_pressed", hat("def mouse_pressed()"));
 
 const drawing = (id, name, slots) => define(id, (b) => {
   g.needs("funground");
@@ -370,10 +412,39 @@ drawing("circle", "circle", ["X", "Y", "D"]);
 drawing("rectangle", "rect", ["X", "Y", "W", "H"]);
 drawing("line", "line", ["X1", "Y1", "X2", "Y2"]);
 drawing("write", "text", ["TEXT", "X", "Y"]);
+// the drawing kit, part 2 (BF-D-033)
+drawing("no_outline", "no_stroke", []);
+drawing("no_fill", "no_fill", []);
+drawing("outline_width", "stroke_width", ["N"]);
+drawing("text_size", "text_size", ["N"]);
+define("text_align", (b) => { g.needs("funground"); return line(`f.text_align(${quote(b.getFieldValue("ALIGN"))})`); });
 define("sketch_value", (b) => { g.needs("funground"); return [`f.${b.getFieldValue("WHAT")}`, ORDER.CALL]; });
 
+// Sound, camera and ml (BF-D-035, BF-D-036): a call of a funground library, `library.name(slots)`. The library's import
+// is written for the program (`from funground import sound`), as for a general call on it.
+const libraryCall = (owner, name, slots) => (b) => {
+  g.needs(owner);
+  return `${owner}.${name}(${slots.map((slot) => g.need(b, slot)).join(", ")})`;
+};
+const libraryValue = (id, owner, name, slots) => {
+  const code = libraryCall(owner, name, slots);
+  define(id, (b) => [code(b), ORDER.CALL]);
+};
+libraryValue("sound_melody", "sound", "melody", ["TEXT"]);
+libraryValue("sound_note", "sound", "note", ["NOTE", "SECONDS"]);
+libraryValue("sound_tone", "sound", "tone", ["HZ", "SECONDS"]);
+libraryValue("sound_microphone", "sound", "microphone", []);
+libraryValue("camera_open", "camera", "open", []);
+libraryValue("ml_pose", "ml", "pose", ["SRC"]);
+libraryValue("ml_hand", "ml", "hand", ["SRC"]);
+libraryValue("ml_guess", "ml", "guess", ["SRC"]);
+libraryValue("ml_words", "ml", "words", ["SRC"]);
+libraryValue("ml_sound", "ml", "sound", ["SRC"]);
+const teach = libraryCall("ml", "teach", ["NAME", "SRC"]);
+define("ml_teach", (b) => line(teach(b)));
+
 // Calling anything else ----------------------------------------------------------------------------------------
-const MODULES = new Set(IMPORT_ORDER);
+const MODULES = new Set([...IMPORT_ORDER, ...LIBRARIES]);
 function argumentList(b) {
   return b.bfState.args.map((kind, i) => {
     const value = g.need(b, "ARG" + i);
@@ -381,12 +452,17 @@ function argumentList(b) {
   }).join(", ");
 }
 const callCode = (b) => `${b.getFieldValue("NAME")}(${argumentList(b)})`;
-const methodCode = (b) => {
+// The code of a call's or an attribute's object. A module or funground library named as a variable is imported for
+// the program; a whole number is put in brackets (`(1).real`: `1.real` is not Python).
+function objectCode(b) {
   const object = b.getInputTargetBlock("OBJ");
   if (object && object.type === typeOf("variable") && MODULES.has(object.getFieldValue("VAR"))) {
     g.needs(object.getFieldValue("VAR"));
-  }  return `${g.need(b, "OBJ", ORDER.CALL)}.${callCode(b)}`;
-};
+  }
+  const code = g.need(b, "OBJ", ORDER.CALL);
+  return object && object.type === typeOf("number") && /^\d+$/.test(code) ? `(${code})` : code;
+}
+const methodCode = (b) => `${objectCode(b)}.${callCode(b)}`;
 // a call of a block the learner made: a count of positional arguments, a name that is only a label
 const ownCode = (b) => {
   const values = Array.from({ length: b.bfState.args }, (_, i) => g.need(b, "ARG" + i));
@@ -398,6 +474,8 @@ define("call", (b) => line(callCode(b)));
 define("call_value", (b) => [callCode(b), ORDER.CALL]);
 define("method", (b) => line(methodCode(b)));
 define("method_value", (b) => [methodCode(b), ORDER.CALL]);
+// An attribute read, `object.name` (BF-D-037)
+define("attribute", (b) => [`${objectCode(b)}.${b.getFieldValue("NAME")}`, ORDER.CALL]);
 
 // Python code --------------------------------------------------------------------------------------------------
 define("code", (b) => {

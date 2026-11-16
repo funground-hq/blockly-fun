@@ -4,6 +4,8 @@
 //
 //   export PATH=/c/sw/nodejs:$PATH; npm run build
 //
+// The editors of slots (editor/editors/) bring five of Blockly's sample fields, bundled like Blockly (BF-D-029).
+//
 // `blockly` is Blockly's core (blockly/core): the package's main entry would also bring Blockly's own blocks and
 // generators, which the editor never uses. Prints the sizes, plain and gzipped.
 
@@ -24,6 +26,17 @@ const blocklyCore = {
   },
 };
 
+// field-colour and field-multilineinput also ship blocks for Blockly's own code generators and so import them
+// (blockly/dart, javascript, lua, php, python: 140 KB). The editor installs none of those blocks, and the plugins'
+// top-level code only passes the generators on, so an empty module stands in for each.
+const noGenerators = {
+  name: "no-generators",
+  setup(builder) {
+    builder.onResolve({ filter: /^blockly\/(dart|javascript|lua|php|python)$/ }, (args) => ({ path: args.path, namespace: "no-generators" }));
+    builder.onLoad({ filter: /.*/, namespace: "no-generators" }, () => ({ contents: "module.exports = {};", loader: "js" }));
+  },
+};
+
 rmSync(DIST, { recursive: true, force: true });
 await build({
   entryPoints: [join(ROOT, "editor", "bundle.js")],
@@ -32,7 +45,7 @@ await build({
   minify: true,
   format: "esm",
   legalComments: "none",
-  plugins: [blocklyCore],
+  plugins: [blocklyCore, noGenerators],
   logLevel: "warning",
 });
 // Blockly's icons and sounds (51 KB), for createBlocksEditor({media}): a host serves them beside the bundle

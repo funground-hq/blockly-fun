@@ -13,11 +13,19 @@
 //   mutator   "items" | "args" | "if": the gear
 //   own       true = a call of a block the learner made: the name as a label, a count of slots, no gear
 //   order     true = the block carries the precedence of the Python it holds (extraState.order)
+//   catalogue a label used instead of scratch when funground's catalogue is given (Funground_Calls_Note.md, section 7);
+//             a field with catalogue: true gets the searchable name list (FieldCatalogueName)
+//   call      the call of funground's that a kit block stands for, "owner.name" ("f.circle", "sound.melody"). The name
+//             list marks that row "has its own block", and choosing it puts the block in (catalogue/kit.js, BF-6)
+//   property  true = an attribute read, `object.name`: the name list offers the object's properties (BF-D-037)
 //
 // Label tokens: {NAME} is a value input, [NAME] is a field. In a line, [NAME] is replaced by the field's value
 // and the letters A, B, N, S, x, L stand for the slots.
 // A gear block has a label of {head, first, sep, tail}: the head, then the items (the text "first" before the first
 // one, "sep" before every other), then the tail.
+
+/** The prefix of every block type the editor registers ("bf_" + the type of the table). */
+export const PREFIX = "bf_";
 
 export const CATEGORIES = [
   { id: "saying", name: "Saying and asking", colour: 290 },
@@ -29,6 +37,9 @@ export const CATEGORIES = [
   { id: "lists", name: "Lists and text", colour: 15 },
   { id: "functions", name: "Your own blocks", colour: 260 },
   { id: "drawing", name: "Drawing", colour: 60 },
+  { id: "events", name: "Events", colour: 90 },
+  { id: "sound", name: "Sound", colour: 310 },
+  { id: "camera", name: "Camera and ml", colour: 235 },
   { id: "calls", name: "Calling anything else", colour: 185 },
   { id: "code", name: "Python code", colour: "#6e6e6e" },
 ];
@@ -39,10 +50,13 @@ const NAME = (def) => ({ kind: "name", default: def });
 // a variable or loop variable: a dropdown of the names used in the program (FieldName in register.js)
 const VARNAME = (def) => ({ kind: "var", default: def });
 
+// The name of a general call is looked up in funground's catalogue when one is given (section 5)
+const CALL_NAME = { ...NAME("name"), catalogue: true };
+
 const CALL_FN = {
   cat: "calls",
   mutator: "args",
-  fields: { NAME: NAME("name") },
+  fields: { NAME: CALL_NAME },
   scratch: { head: "call [NAME]", first: "with", sep: ",", tail: "" },
   python: { head: "[NAME](", first: "", sep: ",", tail: ")" },
   line: "name(a, b, k=v)",
@@ -51,10 +65,23 @@ const CALL_FN = {
 const CALL_METHOD = {
   cat: "calls",
   mutator: "args",
-  fields: { NAME: NAME("name") },
+  fields: { NAME: CALL_NAME },
   scratch: { head: "call [NAME] on {OBJ}", first: "with", sep: ",", tail: "" },
+  // with the catalogue: "f . text align" (section 7)
+  catalogue: { scratch: { head: "{OBJ} . [NAME]", first: "with", sep: ",", tail: "" } },
   python: { head: "{OBJ}.[NAME](", first: "", sep: ",", tail: ")" },
   line: "x.name(a, b, k=v)",
+};
+
+// An attribute read, `object.name` (BF-D-037): a value only. Setting an attribute stays Python code. With a catalogue the
+// name is chosen from the properties of the object's class, found by the same type rule as a method's.
+const ATTRIBUTE = {
+  cat: "calls",
+  property: true,
+  fields: { NAME: CALL_NAME },
+  scratch: "{OBJ} . [NAME]",
+  python: "{OBJ}.[NAME]",
+  line: "x.[NAME]",
 };
 
 // The call of a block made with "make a block". The name is a label, so renaming a def does not rename its
@@ -232,25 +259,44 @@ export const BLOCKS = [
     type: "sketch_frame", kind: "statement", top: true, hat: true, cat: "drawing", body: ["DO"],
     scratch: "every frame", python: "def draw()", line: "def draw():",
   },
-  { type: "canvas_size", kind: "statement", cat: "drawing", scratch: "canvas size {W} by {H}", python: "f.size({W}, {H})", line: "f.size(W, H)" },
-  { type: "background", kind: "statement", cat: "drawing", scratch: "background {COLOR}", python: "f.background({COLOR})", line: "f.background(x)" },
-  { type: "fill", kind: "statement", cat: "drawing", scratch: "fill colour {COLOR}", python: "f.fill({COLOR})", line: "f.fill(x)" },
-  { type: "outline", kind: "statement", cat: "drawing", scratch: "outline colour {COLOR}", python: "f.stroke({COLOR})", line: "f.stroke(x)" },
+  { type: "canvas_size", kind: "statement", cat: "drawing", scratch: "canvas size {W} by {H}", call: "f.size", python: "f.size({W}, {H})", line: "f.size(W, H)" },
+  { type: "background", kind: "statement", cat: "drawing", scratch: "background {COLOR}", call: "f.background", python: "f.background({COLOR})", line: "f.background(x)" },
+  { type: "fill", kind: "statement", cat: "drawing", scratch: "fill colour {COLOR}", call: "f.fill", python: "f.fill({COLOR})", line: "f.fill(x)" },
+  { type: "outline", kind: "statement", cat: "drawing", scratch: "outline colour {COLOR}", call: "f.stroke", python: "f.stroke({COLOR})", line: "f.stroke(x)" },
   {
     type: "circle", kind: "statement", cat: "drawing",
-    scratch: "circle at x {X} y {Y} size {D}", python: "f.circle({X}, {Y}, {D})", line: "f.circle(x, y, d)",
+    scratch: "circle at x {X} y {Y} size {D}", call: "f.circle", python: "f.circle({X}, {Y}, {D})", line: "f.circle(x, y, d)",
   },
   {
     type: "rectangle", kind: "statement", cat: "drawing",
-    scratch: "rectangle at x {X} y {Y} width {W} height {H}", python: "f.rect({X}, {Y}, {W}, {H})", line: "f.rect(x, y, w, h)",
+    scratch: "rectangle at x {X} y {Y} width {W} height {H}", call: "f.rect", python: "f.rect({X}, {Y}, {W}, {H})", line: "f.rect(x, y, w, h)",
   },
   {
     type: "line", kind: "statement", cat: "drawing",
-    scratch: "line from x {X1} y {Y1} to x {X2} y {Y2}", python: "f.line({X1}, {Y1}, {X2}, {Y2})", line: "f.line(x1, y1, x2, y2)",
+    scratch: "line from x {X1} y {Y1} to x {X2} y {Y2}", call: "f.line", python: "f.line({X1}, {Y1}, {X2}, {Y2})", line: "f.line(x1, y1, x2, y2)",
   },
   {
     type: "write", kind: "statement", cat: "drawing",
-    scratch: "write {TEXT} at x {X} y {Y}", python: "f.text({TEXT}, {X}, {Y})", line: "f.text(t, x, y)",
+    scratch: "write {TEXT} at x {X} y {Y}", call: "f.text", python: "f.text({TEXT}, {X}, {Y})", line: "f.text(t, x, y)",
+  },
+  // The drawing kit, part 2 (BF-D-033): five more of the names the examples use most.
+  { type: "no_outline", kind: "statement", cat: "drawing", call: "f.no_stroke", scratch: "no outline", python: "f.no_stroke()", line: "f.no_stroke()" },
+  { type: "no_fill", kind: "statement", cat: "drawing", call: "f.no_fill", scratch: "no fill", python: "f.no_fill()", line: "f.no_fill()" },
+  {
+    type: "outline_width", kind: "statement", cat: "drawing",
+    call: "f.stroke_width", scratch: "outline width {N}", python: "f.stroke_width({N})", line: "f.stroke_width(N)",
+  },
+  { type: "text_size", kind: "statement", cat: "drawing", call: "f.text_size", scratch: "text size {N}", python: "f.text_size({N})", line: "f.text_size(N)" },
+  {
+    // a dropdown of the three words; text_align with any other argument, or vertical=, stays a call block
+    type: "text_align", kind: "statement", cat: "drawing", call: "f.text_align",
+    fields: {
+      ALIGN: {
+        kind: "dropdown", default: "center",
+        options: [opt("left", "left", "\"left\""), opt("center", "center", "\"center\""), opt("right", "right", "\"right\"")],
+      },
+    },
+    scratch: "line up text [ALIGN]", python: "f.text_align([ALIGN])", line: "f.text_align(x)",
   },
   {
     type: "sketch_value", kind: "value", cat: "drawing",
@@ -258,10 +304,60 @@ export const BLOCKS = [
       WHAT: {
         kind: "dropdown", default: "mouse_x",
         options: [opt("mouse_x", "mouse x", "f.mouse_x"), opt("mouse_y", "mouse y", "f.mouse_y"), opt("width", "width", "f.width"),
-          opt("height", "height", "f.height"), opt("frame_count", "frame count", "f.frame_count")],
+          opt("height", "height", "f.height"), opt("frame_count", "frame count", "f.frame_count"),
+          opt("key", "the key pressed", "f.key")],
       },
     },
     scratch: "[WHAT]", python: "[WHAT]", line: null,
+  },
+
+  // Events (BF-D-034): the two events the examples use most. Like the sketch's hats, each is a stack of its own, has the
+  // `global` line of the names it sets, and a program with one ends with f.run().
+  // Own category, not Drawing: Scratch keeps "when ... pressed" under Events, and Drawing already holds sixteen blocks.
+  {
+    type: "key_pressed", kind: "statement", top: true, hat: true, cat: "events", body: ["DO"],
+    scratch: "when a key is pressed", python: "def key_pressed()", line: "def key_pressed():",
+  },
+  {
+    type: "mouse_pressed", kind: "statement", top: true, hat: true, cat: "events", body: ["DO"],
+    scratch: "when the mouse is pressed", python: "def mouse_pressed()", line: "def mouse_pressed():",
+  },
+
+  // Sound (BF-D-035): library functions only, all values. They need `from funground import sound`, and the converter
+  // reads them as blocks only in a program that imports it (BF-D-032). More than these arguments: a call block.
+  {
+    type: "sound_melody", kind: "value", cat: "sound", call: "sound.melody",
+    scratch: "melody {TEXT}", python: "sound.melody({TEXT})", line: "sound.melody(t)",
+  },
+  {
+    type: "sound_note", kind: "value", cat: "sound", call: "sound.note",
+    scratch: "note {NOTE} for {SECONDS} seconds", python: "sound.note({NOTE}, {SECONDS})", line: "sound.note(n, s)",
+  },
+  {
+    type: "sound_tone", kind: "value", cat: "sound", call: "sound.tone",
+    scratch: "tone {HZ} for {SECONDS} seconds", python: "sound.tone({HZ}, {SECONDS})", line: "sound.tone(hz, s)",
+  },
+  {
+    type: "sound_microphone", kind: "value", cat: "sound", call: "sound.microphone",
+    scratch: "the microphone", python: "sound.microphone()", line: "sound.microphone()",
+  },
+
+  // Camera and ml (BF-D-036): the same rules. A source is a camera, a picture or a sound.
+  { type: "camera_open", kind: "value", cat: "camera", call: "camera.open", scratch: "the camera", python: "camera.open()", line: "camera.open()" },
+  { type: "ml_pose", kind: "value", cat: "camera", call: "ml.pose", scratch: "the body in {SRC}", python: "ml.pose({SRC})", line: "ml.pose(src)" },
+  { type: "ml_hand", kind: "value", cat: "camera", call: "ml.hand", scratch: "a hand in {SRC}", python: "ml.hand({SRC})", line: "ml.hand(src)" },
+  { type: "ml_guess", kind: "value", cat: "camera", call: "ml.guess", scratch: "guess what {SRC} shows", python: "ml.guess({SRC})", line: "ml.guess(src)" },
+  {
+    type: "ml_words", kind: "value", cat: "camera", call: "ml.words",
+    scratch: "the words heard in {SRC}", python: "ml.words({SRC})", line: "ml.words(src)",
+  },
+  {
+    type: "ml_sound", kind: "value", cat: "camera", call: "ml.sound",
+    scratch: "the sound heard in {SRC}", python: "ml.sound({SRC})", line: "ml.sound(src)",
+  },
+  {
+    type: "ml_teach", kind: "statement", cat: "camera", call: "ml.teach",
+    scratch: "teach {NAME} from {SRC}", python: "ml.teach({NAME}, {SRC})", line: "ml.teach(name, src)",
   },
 
   // Calling anything else
@@ -269,6 +365,7 @@ export const BLOCKS = [
   { type: "call_value", kind: "value", ...CALL_FN },
   { type: "method", kind: "statement", ...CALL_METHOD },
   { type: "method_value", kind: "value", ...CALL_METHOD },
+  { type: "attribute", kind: "value", ...ATTRIBUTE },
 
   // Python code
   { type: "code", kind: "statement", ...CODE, line: null },
@@ -333,8 +430,20 @@ export const DEFAULTS = {
   rectangle: { X: number(100), Y: number(100), W: number(200), H: number(120) },
   line: { X1: number(0), Y1: number(0), X2: number(640), Y2: number(400) },
   write: { TEXT: text("Hello!"), X: number(20), Y: number(40) },
+  outline_width: { N: number(4) },
+  text_size: { N: number(24) },
+  sound_melody: { TEXT: text("C D E") },
+  sound_note: { NOTE: text("C4"), SECONDS: number(1) },
+  sound_tone: { HZ: number(440), SECONDS: number(1) },
+  ml_pose: { SRC: name("cam") },
+  ml_hand: { SRC: name("cam") },
+  ml_guess: { SRC: name("cam") },
+  ml_words: { SRC: name("mic") },
+  ml_sound: { SRC: name("mic") },
+  ml_teach: { NAME: text("thumbs up"), SRC: name("cam") },
   method: { OBJ: name("x") },
   method_value: { OBJ: name("x") },
+  attribute: { OBJ: name("x") },
 };
 
 // What a slot added in the gear gets (loading JSON adds none: the JSON gives the children). An else-if gets the
