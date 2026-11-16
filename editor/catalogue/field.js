@@ -74,9 +74,9 @@ export class FieldCatalogueName extends Blockly.FieldTextInput {
     this.panel = new NamePanel({
       document, catalogue, scope, name: this.getValue(), kitOf: kitFor, onChoose: (entry) => this.choose(entry),
     });
-    const content = Blockly.DropDownDiv.getContentDiv();
+    // clearContent() first: since Blockly 13 it makes a new drop-down, so a content div taken before it is a dead one
     Blockly.DropDownDiv.clearContent();
-    content.appendChild(this.panel.element);
+    Blockly.DropDownDiv.getContentDiv().appendChild(this.panel.element);
     Blockly.DropDownDiv.setColour("#ffffff", "#c8c8c8");
     Blockly.DropDownDiv.showPositionedByField(this, () => { this.panel = null; }, 0, false);
   }
@@ -96,10 +96,7 @@ export class FieldCatalogueName extends Blockly.FieldTextInput {
       if (!entry) return super.onHtmlInputKeyDown_(event);
       event.preventDefault();
       this.choose(entry);
-    } else if (panel && event.key === "Escape") {
-      event.preventDefault();
-      this.close();
-    } else super.onHtmlInputKeyDown_(event);
+    } else super.onHtmlInputKeyDown_(event);   // Escape is Blockly's: the name as it was, the list closed
   }
 
   /** Puts the entry's name in, closes the list, and lets the block build its slots. */
