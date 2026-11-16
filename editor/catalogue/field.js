@@ -7,7 +7,8 @@
 
 import * as Blockly from "blockly";
 import { NamePanel } from "./panel.js";
-import { isMethodBlock, lookupEntry } from "./call_block.js";
+import { isAttributeBlock, isMethodBlock, lookupEntry } from "./call_block.js";
+import { kitFor } from "./kit.js";
 import { staticType } from "./types.js";
 
 export class FieldCatalogueName extends Blockly.FieldTextInput {
@@ -15,7 +16,7 @@ export class FieldCatalogueName extends Blockly.FieldTextInput {
    * @param defaultName  the name to start with
    * @param validator    the Python-name check of the other name fields
    * @param context      {catalogue, scratch, onChoose(block, entry)}: `scratch` is true when the block says
-   *                     "text align" for text_align (Scratch words); onChoose builds the slots
+   *                     "text align" for text_align (Scratch words); onChoose builds the slots, or puts in a kit block
    */
   constructor(defaultName, validator, context) {
     super(defaultName, validator);
@@ -69,8 +70,9 @@ export class FieldCatalogueName extends Blockly.FieldTextInput {
     const { catalogue } = this.context;
     const tracker = block.workspace.bfTypes;
     const type = tracker ? tracker.objectType(block) : staticType(block, catalogue);
+    const scope = catalogue.scope(type, { properties: isAttributeBlock(block) });
     this.panel = new NamePanel({
-      document, catalogue, scope: catalogue.scope(type), name: this.getValue(), onChoose: (entry) => this.choose(entry),
+      document, catalogue, scope, name: this.getValue(), kitOf: kitFor, onChoose: (entry) => this.choose(entry),
     });
     const content = Blockly.DropDownDiv.getContentDiv();
     Blockly.DropDownDiv.clearContent();

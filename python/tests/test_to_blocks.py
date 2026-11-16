@@ -167,7 +167,7 @@ def test_semicolons_make_two_blocks():
 def test_imports_a_block_needs_are_taken_in_and_others_kept():
     assert kinds("import random\n\nx = random.randint(1, 6)\n") == ["set"]
     assert kinds("import random\n\nx = random.choice(y)\n") == ["set"]  # a call on the module needs it too
-    assert kinds("import math\n\nx = math.pi\n") == ["code", "set"]
+    assert kinds("import math\n\nx = math.pi\n") == ["set"]   # an attribute of the module needs it too (BF-D-037)
     assert kinds("import os\n\nx = 1\n") == ["code", "set"]
 
 
@@ -318,10 +318,13 @@ def test_the_kit_needs_import_funground_as_f():
 
 
 def test_sketch_values_and_other_attributes():
-    source = "import funground as f\n\nx = f.mouse_x\ny = f.key\nf.show()\n"
+    source = "import funground as f\n\nx = f.mouse_x\ny = f.key\nz = f.is_key_pressed\nf.show()\n"
     statements = list(chain(tops(source)[0]))
     assert slot(statements[0], "VALUE") == {"type": "bf_sketch_value", "fields": {"WHAT": "mouse_x"}}
-    assert slot(statements[1], "VALUE")["type"] == "bf_code_value"
+    assert slot(statements[1], "VALUE") == {"type": "bf_sketch_value", "fields": {"WHAT": "key"}}   # BF-D-034
+    other = slot(statements[2], "VALUE")   # not in the kit: the general attribute block
+    assert other["type"] == "bf_attribute" and other["fields"] == {"NAME": "is_key_pressed"}
+    assert slot(other, "OBJ") == {"type": "bf_variable", "fields": {"VAR": "f"}}
 
 
 def test_a_global_line_other_than_the_generators_keeps_an_ordinary_def():
@@ -396,3 +399,117 @@ def code_texts(source):
 def first_blank(source):
     """The blank lines on the first block of the code, under a header."""
     return tops(source)[1].get("extraState", {}).get("blank", 0)
+
+
+# -- the drawing kit, part 2 (BF-D-033) ------------------------------------------------------------------------------
+
+KIT = "import funground as f\n\n"
+
+
+def test_five_more_drawing_blocks():
+    source = KIT + "f.no_stroke()\nf.no_fill()\nf.stroke_width(3)\nf.text_size(24)\nf.text_align(\"right\")\nf.show()\n"
+    assert kinds(source) == ["no_outline", "no_fill", "outline_width", "text_size", "text_align"]
+    blocks = list(chain(tops(source)[0]))
+    assert slot(blocks[2], "N") == {"type": "bf_number", "fields": {"NUM": "3"}}
+    assert blocks[4]["fields"] == {"ALIGN": "right"}
+
+
+def test_a_call_with_other_arguments_stays_a_call_block():
+    for call in ["f.text_align(\"centre\")",   # not one of the three words
+                 "f.text_align(where)", "f.text_align(\"left\", vertical=\"top\")", "f.text_align(\"left\", \"top\")",
+                 "f.no_stroke(1)", "f.stroke_width(1, 2)"]:
+        assert first(KIT + call + "\n")["type"] == "bf_code"   # the import is kept: no block needs it
+        assert kinds(KIT + call + "\n") == ["code", "method"], call
+
+
+# -- the events kit (BF-D-034) ---------------------------------------------------------------------------------------
+
+EVENTS = (KIT + "score = 0\n\n\ndef key_pressed():\n    global score\n\n    score += 1\n\n\n"
+          "def mouse_pressed():\n    f.circle(f.mouse_x, f.mouse_y, 20)\n\n\nf.run()\n")
+
+
+def test_event_hats_are_stacks_of_their_own_and_a_program_with_one_ends_with_run():
+    assert kinds(EVENTS) == ["set", "key_pressed", "mouse_pressed"]
+    assert [len(list(chain(top))) for top in tops(EVENTS)] == [1, 1, 1]
+
+
+def test_an_event_hat_keeps_the_generators_global_rule():
+    # `global score, other`: the generator would write `global score` only, so the def stays an ordinary def
+    source = EVENTS.replace("global score", "global score, other")
+    assert kinds(source) == ["set", "def", "mouse_pressed"]
+    # with arguments it is not an event hat
+    assert "key_pressed" not in kinds(KIT + "def key_pressed(key):\n    pass\n\n\nf.run()\n")
+
+
+def last(source):
+    """The last block of the first stack (the imports kept as code come before it)."""
+    return list(chain(tops(source)[0]))[-1]
+
+
+# -- the sound, camera and ml kits (BF-D-035, BF-D-036) ----------------------------------------------------------------
+
+def test_library_calls_with_exactly_the_blocks_arguments_are_blocks_when_the_program_imports_the_library():
+    source = ("from funground import camera\nfrom funground import ml\nfrom funground import sound\n\n\n"
+              "cam = camera.open()\nbody = ml.pose(cam)\nhand = ml.hand(cam)\nguess = ml.guess(cam)\nwords = ml.words(mic)\n"
+              "heard = ml.sound(mic)\nml.teach(\"fist\", cam)\nsong = sound.melody(\"C D E\")\n"
+              "a = sound.note(\"C4\", 1)\nb = sound.tone(440, 1)\nmic = sound.microphone()\n")
+    top = tops(source)[0]
+    assert [b["type"][3:] for b in chain(top)] == ["set"] * 6 + ["ml_teach"] + ["set"] * 4
+    values = [slot(b, "VALUE")["type"][3:] for b in chain(top) if b["type"] == "bf_set"]
+    assert values == ["camera_open", "ml_pose", "ml_hand", "ml_guess", "ml_words", "ml_sound", "sound_melody",
+                      "sound_note", "sound_tone", "sound_microphone"]
+    body = slot(list(chain(top))[1], "VALUE")
+    assert slot(body, "SRC") == {"type": "bf_variable", "fields": {"VAR": "cam"}}
+
+
+def test_library_calls_need_the_import_and_the_exact_arguments():
+    # no import: the name is the program's own
+    assert slot(first("body = ml.pose(cam)\n"), "VALUE")["type"] == "bf_method_value"
+    assert slot(first("song = sound.melody(\"c\")\n"), "VALUE")["type"] == "bf_method_value"
+    imported = "from funground import ml\nfrom funground import sound\n\n"
+    for text in ["ml.pose(cam, 2)", "ml.pose()", "ml.pose(cam, count=2)", "ml.guess(cam, k=3)", "ml.pose(*cams)",
+                 "sound.melody(\"c\", tempo=90)", "sound.tone(440)", "sound.note(\"C\", 1, wave=\"saw\")",
+                 "sound.microphone(\"usb\")"]:
+        value = slot(last(imported + "x = " + text + "\n"), "VALUE")
+        assert value["type"] in ("bf_method_value", "bf_code_value"), text
+    # a value block is not a statement, and a statement block is not a value
+    assert last(imported + "sound.melody(\"c\")\n")["type"] == "bf_method"
+    assert slot(last(imported + "x = ml.teach(\"a\", cam)\n"), "VALUE")["type"] == "bf_method_value"
+    assert last(imported + "ml.teach(\"a\", cam)\n")["type"] == "bf_ml_teach"
+
+
+def test_methods_are_never_kit_blocks():
+    imported = "from funground import sound\n\n"
+    assert slot(last(imported + "x = song.melody(\"c\")\n"), "VALUE")["type"] == "bf_method_value"
+    assert last(imported + "tune.play()\n")["type"] == "bf_method"
+
+
+# -- an attribute as a block (BF-D-037) -----------------------------------------------------------------------------
+
+def test_an_attribute_read_is_a_value_block_and_chains_nest():
+    value = slot(first("x = body.nose.x\n"), "VALUE")
+    assert value["type"] == "bf_attribute" and value["fields"] == {"NAME": "x"}
+    inner = slot(value, "OBJ")
+    assert inner["type"] == "bf_attribute" and inner["fields"] == {"NAME": "nose"}
+    assert slot(inner, "OBJ") == {"type": "bf_variable", "fields": {"VAR": "body"}}
+
+
+def test_an_attribute_is_the_object_of_a_call_and_a_call_the_object_of_an_attribute():
+    call = first("snap.size.count(1)\n")
+    assert call["type"] == "bf_method" and slot(call, "OBJ")["type"] == "bf_attribute"
+    value = slot(first("w = cam.picture().width\n"), "VALUE")
+    assert value["type"] == "bf_attribute"
+    assert slot(value, "OBJ")["type"] == "bf_method_value"
+
+
+def test_setting_an_attribute_stays_python_code():
+    assert kinds("body.score = 1\nbody.score += 1\ndel body.score\n") == ["code", "code", "code"]
+    assert kinds("body.points[0] = 1\n") == ["set_item"]   # the list is an attribute read
+    assert slot(first("body.points[0] = 1\n"), "LIST")["type"] == "bf_attribute"
+
+
+def test_an_attribute_of_a_module_needs_its_import_and_a_library_name_with_no_import_is_code():
+    assert kinds("import time\n\nx = time.time\n") == ["set"]
+    assert kinds("import os\n\nx = os.path\n") == ["code", "set"]
+    assert slot(slot(first("x = sound.something\n"), "VALUE"), "OBJ")["type"] == "bf_code_value"   # no import, no line
+    assert kinds("from funground import sound\n\nx = sound.something\n") == ["set"]

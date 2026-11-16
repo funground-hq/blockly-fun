@@ -52,9 +52,36 @@ _DRAWING = {
     ("rect", 4): ("rectangle", ("X", "Y", "W", "H")),
     ("line", 4): ("line", ("X1", "Y1", "X2", "Y2")),
     ("text", 3): ("write", ("TEXT", "X", "Y")),
+    # part 2 (BF-D-033); text_align has a dropdown, not a slot (_TEXT_ALIGN)
+    ("no_stroke", 0): ("no_outline", ()),
+    ("no_fill", 0): ("no_fill", ()),
+    ("stroke_width", 1): ("outline_width", ("N",)),
+    ("text_size", 1): ("text_size", ("N",)),
 }
-_SKETCH_VALUES = ("mouse_x", "mouse_y", "width", "height", "frame_count")
-_HATS = {"setup": "sketch_start", "draw": "sketch_frame"}
+_TEXT_ALIGN = ("left", "center", "right")   # f.text_align("left"); any other argument stays a call block
+_SKETCH_VALUES = ("mouse_x", "mouse_y", "width", "height", "frame_count", "key")
+# def name -> hat. The sketch's two (BF-D-022) and the events' (BF-D-034).
+_HATS = {"setup": "sketch_start", "draw": "sketch_frame", "key_pressed": "key_pressed", "mouse_pressed": "mouse_pressed"}
+# The hats that need the loop: a program with one ends with f.run(), not f.show()
+_FRAME_HATS = {PREFIX + kind for kind in ("sketch_frame", "key_pressed", "mouse_pressed")}
+# Calls of funground's libraries that have a block (BF-D-035, BF-D-036), read as blocks only in a program that imports
+# the library (BF-D-032), with exactly these arguments and no keywords.
+# (library, function, number of arguments) -> (block, its slots in order). Blocks in _LIBRARY_STATEMENTS stand as
+# statements; the others are values.
+_LIBRARY = {
+    ("sound", "melody", 1): ("sound_melody", ("TEXT",)),
+    ("sound", "note", 2): ("sound_note", ("NOTE", "SECONDS")),
+    ("sound", "tone", 2): ("sound_tone", ("HZ", "SECONDS")),
+    ("sound", "microphone", 0): ("sound_microphone", ()),
+    ("camera", "open", 0): ("camera_open", ()),
+    ("ml", "pose", 1): ("ml_pose", ("SRC",)),
+    ("ml", "hand", 1): ("ml_hand", ("SRC",)),
+    ("ml", "guess", 1): ("ml_guess", ("SRC",)),
+    ("ml", "words", 1): ("ml_words", ("SRC",)),
+    ("ml", "sound", 1): ("ml_sound", ("SRC",)),
+    ("ml", "teach", 2): ("ml_teach", ("NAME", "SRC")),
+}
+_LIBRARY_STATEMENTS = {"ml_teach"}
 # A program's header (BF-7): the first stack, when it holds nothing but comments and one docstring. The generator
 # writes it above the imports it writes. python.js (headerStack) has the same two tests, so the two agree on it.
 _STRING_STATEMENT = re.compile(
@@ -78,8 +105,9 @@ def _is_header(blocks: list[dict]) -> bool:
     return True
 
 
-_TOP_BLOCKS = {"bf_def", "bf_sketch_start", "bf_sketch_frame"}   # each a stack of its own (BF-D-013)
-_KIT = {PREFIX + kind for kind in (*_HATS.values(), *(kind for kind, _ in _DRAWING.values()), "sketch_value")}
+_TOP_BLOCKS = {PREFIX + "def", *(PREFIX + kind for kind in _HATS.values())}   # each a stack of its own (BF-D-013)
+# The blocks that need `import funground as f` (the sound, camera and ml blocks need their own library's import instead)
+_KIT = {PREFIX + kind for kind in (*_HATS.values(), *(kind for kind, _ in _DRAWING.values()), "text_align", "sketch_value")}
 
 # The names a "Python code" block's text uses, as the generator reads them (python.js sharedNames): comments and
 # strings left out, and a name after a dot is an attribute, not a name.
@@ -362,7 +390,7 @@ class _Converter:
         taken = any(node.names[0].name == "funground" for node in imports)
         ending = self._ending(statements) if taken and "funground" in self.needs else None
         if ending is not None:
-            frame = any(block["type"] == PREFIX + "sketch_frame" for block, _ in pieces)
+            frame = any(block["type"] in _FRAME_HATS for block, _ in pieces)
             if (ending.value.func.attr == "run") == frame:
                 pieces = [piece for piece in pieces if piece[1] != ending.lineno]
             else:
@@ -792,10 +820,17 @@ class _Converter:
                 return self._own("own_call", func.id, args)
             return self._call("call", call)
         if (self.funground and positional_only and isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
-                and func.value.id == "f" and (func.attr, len(args)) in _DRAWING):
-            kind, slots = _DRAWING[func.attr, len(args)]
-            self.needs.add("funground")
-            return _block(kind, inputs=self._inputs(**dict(zip(slots, args))))
+                and func.value.id == "f"):
+            if (func.attr, len(args)) in _DRAWING:
+                kind, slots = _DRAWING[func.attr, len(args)]
+                self.needs.add("funground")
+                return _block(kind, inputs=self._inputs(**dict(zip(slots, args))))
+            if (func.attr == "text_align" and len(args) == 1 and isinstance(args[0], ast.Constant)
+                    and args[0].value in _TEXT_ALIGN):
+                self.needs.add("funground")
+                return _block("text_align", fields={"ALIGN": args[0].value})
+        if (library := self._library_block(call, statement=True)) is not None:
+            return library
         if isinstance(func, ast.Attribute) and positional_only and len(args) == 1:
             target, method = func.value, func.attr
             if isinstance(target, ast.Name) and target.id == "time" and method == "sleep":
@@ -910,17 +945,20 @@ class _Converter:
             return None
         parts = [(None, a) for a in call.args] + [(k.arg, k.value) for k in call.keywords]
         fields = {"NAME": name, **{f"KW{i}": key for i, (key, _) in enumerate(parts) if key is not None}}
-        inputs = {}
-        if target is not None:
-            if isinstance(target, ast.Name) and (target.id in IMPORT_ORDER or target.id in self.library_imports):
-                self.needs.add(target.id)
-            if isinstance(target, ast.Name) and target.id in LIBRARIES and target.id not in self.library_imports:
-                inputs["OBJ"] = _slot(self._code_value(target))   # no import: not funground's library, whatever it is
-            else:
-                inputs.update(self._inputs(OBJ=target))
+        inputs = self._object(target) if target is not None else {}
         inputs.update(self._inputs(**{f"ARG{i}": value for i, (_, value) in enumerate(parts)}))
         extra = {"args": ["k" if key is not None else "p" for key, _ in parts]}
         return _block(kind, fields=fields, extra=extra, inputs=inputs)
+
+    def _object(self, target: ast.expr) -> dict:
+        """The OBJ input of a call or an attribute read. A module the generator imports (math, random, time) or a
+        funground library the program imports is imported for the program; a library's name with no import is not
+        funground's, whatever it is, so it stays Python code and brings no import (BF-D-032)."""
+        if isinstance(target, ast.Name) and (target.id in IMPORT_ORDER or target.id in self.library_imports):
+            self.needs.add(target.id)
+        if isinstance(target, ast.Name) and target.id in LIBRARIES and target.id not in self.library_imports:
+            return {"OBJ": _slot(self._code_value(target))}
+        return self._inputs(OBJ=target)
 
     # -- values --------------------------------------------------------------------------------------------------
 
@@ -1018,10 +1056,13 @@ class _Converter:
             if any(isinstance(e, ast.Starred) for e in node.elts):
                 return None
             return self._items("list_of", node.elts) if node.elts else _block("empty_list")
-        if (self.funground and isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
-                and node.value.id == "f" and node.attr in _SKETCH_VALUES):
-            self.needs.add("funground")
-            return _block("sketch_value", fields={"WHAT": node.attr})
+        if isinstance(node, ast.Attribute):
+            if (self.funground and isinstance(node.value, ast.Name)
+                    and node.value.id == "f" and node.attr in _SKETCH_VALUES):
+                self.needs.add("funground")
+                return _block("sketch_value", fields={"WHAT": node.attr})
+            # `object.name` read, any other: the general attribute block (BF-D-037). Setting one stays Python code.
+            return _block("attribute", fields={"NAME": node.attr}, inputs=self._object(node.value)) if is_name(node.attr) else None
         return None
 
     def _constant(self, node: ast.Constant) -> dict | None:
@@ -1064,4 +1105,20 @@ class _Converter:
                 if (module, name, len(args)) == ("math", "sqrt", 1):
                     self.needs.add("math")
                     return _block("sqrt", inputs=self._inputs(X=args[0]))
+        if (library := self._library_block(call, statement=False)) is not None:
+            return library
         return self._call("call_value" if isinstance(func, ast.Name) else "method_value", call)
+
+    def _library_block(self, call: ast.Call, statement: bool) -> dict | None:
+        """The block for `sound.melody(t)`, `ml.pose(src)` and the other library calls of _LIBRARY, when the program
+        imports that library (BF-D-032) and the call has exactly the block's arguments. None otherwise: a call block."""
+        func = call.func
+        if call.keywords or not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                                 and func.value.id in self.library_imports):
+            return None
+        found = _LIBRARY.get((func.value.id, func.attr, len(call.args)))
+        if found is None or (found[0] in _LIBRARY_STATEMENTS) != statement:
+            return None
+        kind, slots = found
+        self.needs.add(func.value.id)
+        return _block(kind, inputs=self._inputs(**dict(zip(slots, call.args))))

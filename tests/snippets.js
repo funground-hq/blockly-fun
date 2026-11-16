@@ -79,4 +79,30 @@ export const SNIPPETS = [
   "import random\n\n# Roll.\n\ndef roll():\n    return random.randint(1, 6)\n",
   // no header: as before
   "import random\n\n# Roll.\nx = random.randint(1, 6)\n",
+  // the drawing kit's second part (BF-D-033), and the calls that stay call blocks: another word, a second argument, a keyword
+  "import funground as f\n\nf.no_stroke()\nf.no_fill()\nf.stroke_width(3)\nf.text_size(24)\nf.text_align(\"right\")\nf.show()\n",
+  "import funground as f\n\nf.text_align(\"left\")\nf.text_align(\"center\")\nf.circle(1, 2, 3)\nf.show()\n",
+  "import funground as f\n\nf.no_fill()\nf.text_align(\"centre\")\nf.text_align(\"left\", vertical=\"top\")\nf.text_align(where)\nf.show()\n",
+  "import funground as f\n\nf.text_align(\"left\", \"top\")\nf.no_stroke(1)\nf.stroke_width(1, 2)\nf.text_size()\nf.show()\n",
+  // the events kit (BF-D-034): hats with the global rule, f.key, f.run(); an event def with a parameter or a different global line stays a def
+  "import funground as f\n\nscore = 0\n\n\ndef key_pressed():\n    global score\n\n    score += 1\n    last = f.key\n\n\ndef mouse_pressed():\n    f.circle(f.mouse_x, f.mouse_y, 20)\n\n\nf.run()\n",
+  "import funground as f\n\n\ndef mouse_pressed():\n    f.circle(1, 2, 3)\n\n\nf.run()\n",
+  "import funground as f\n\n\ndef key_pressed(key):\n    f.circle(1, 2, 3)\n\n\nf.run()\n",
+  "import funground as f\n\nscore = 0\n\n\ndef key_pressed():\n    global score, other\n\n    score += 1\n\n\nf.run()\n",
+  "import funground as f\n\nx = f.key\ny = f.is_key_pressed\nf.circle(1, 2, 3)\nf.show()\n",
+  // the sound, camera and ml kits (BF-D-035, BF-D-036): blocks only in a program that imports the library, with exactly these arguments
+  "from funground import sound\n\nsong = sound.melody(\"C D E\")\nsong.play()\nsound.tone(440, 1).play()\nx = sound.note(\"C4\", 1)\nmic = sound.microphone()\n",
+  "from funground import camera\nfrom funground import ml\n\ncam = camera.open()\nbody = ml.pose(cam)\nhand = ml.hand(cam)\nml.teach(\"fist\", cam)\nguess = ml.guess(cam)\nprint(guess.name, guess.score)\n",
+  "from funground import ml\nfrom funground import sound\n\nwords = ml.words(mic)\nheard = ml.sound(mic)\nsong = sound.melody(\"C\", tempo=90)\nx = ml.pose(cam, 2)\ny = ml.guess(cam, k=3)\nz = sound.tone(440)\n",
+  "from funground import ml\n\nx = ml.teach(\"fist\", cam)\nml.pose(cam)\nsound.melody(\"C D E\")\n",
+  "import funground as f\nfrom funground import camera\nfrom funground import ml\n\ncam = camera.open()\n\n\ndef draw():\n    body = ml.pose(cam)\n    f.circle(body.nose.x, body.nose.y, 40)\n\n\nf.run()\n",
+  "body = ml.pose(cam)\nsong = sound.melody(\"C D E\")\ncam = camera.open()\n",
+  "from funground import sound\n\ntune.melody(\"C D E\")\nx = tune.tone(440, 1)\n",
+  // an attribute as a block (BF-D-037): chains, a call on an attribute, an attribute of a call, setting one stays Python code
+  "x = body.nose.x\nprint(guess.name, body.score)\nw = cam.picture().width\nsnap.size.count(1)\nbody.points[0] = 1\nbody.score = 3\nbody.score += 1\ndel body.score\n",
+  "x = (1).real\ny = (a + b).real\nz = 1.5.real\nw = \"abc\".upper\nv = [1, 2].copy\nu = f\"{a}\".real\nt = (lambda: 1).__name__\n",
+  "import os\n\nx = os.path.join(a, b)\ny = os.sep\n",
+  "import time\n\nx = time.time\n",
+  "x = sound.something\n",
+  "from funground import sound\n\nx = sound.something\n",
 ];

@@ -5,6 +5,7 @@
 //   member(type, name)      the entry a type offers under a name
 //   typeOfEntry(entry)      what a call of that entry gives back
 //   scope(type)             the entries a name list offers on a type, in groups
+//   property(type, name)    the entry an attribute read offers (BF-D-037); scope(type, {properties: true}) lists them
 // A "type" is what an object is, as the type rule (types.js) works it out:
 //   {kind: "f"}  {kind: "library", name}  {kind: "class", name}  {kind: "list", of}   or null for "do not know".
 
@@ -39,6 +40,7 @@ export class Catalogue {
     this.raw = raw;
     this.helpBase = helpBase;
     this.functions = new Map();              // names of f: a call or a class
+    this.values = new Map();                 // names of f that are values (width, key, mouse_x), read as attributes
     this.libraries = new Map();              // library name -> Map name -> Entry
     this.classes = new Map();                // class name -> Map name -> Entry (methods and properties)
     this.classesByMember = new Map();        // member name -> [class names], for an object of unknown class
@@ -48,6 +50,7 @@ export class Catalogue {
     const owner = { kind: "f" };
     for (const item of raw.names || []) {
       if (PLAIN_KINDS.has(item.kind)) this.functions.set(item.name, new Entry(item, owner));
+      else if (item.kind === "value") this.values.set(item.name, new Entry(item, owner));
     }
     for (const [library, items] of Object.entries(raw.libraries || {})) {
       const map = new Map();
@@ -80,6 +83,23 @@ export class Catalogue {
     return owners.length === 1 ? this.classes.get(owners[0]).get(name) : null;
   }
 
+  /**
+   * The entry an attribute read offers under a name (BF-D-037): a property of a class, or a value of `f`. A library has
+   * only functions, so `sound.something` read without a call has none. Null if there is none.
+   */
+  property(type, name) {
+    if (type?.kind === "f") return this.values.get(name) ?? null;
+    if (type?.kind !== "class") return null;
+    const entry = this.classes.get(type.name)?.get(name);
+    return entry?.raw.kind === "property" ? entry : null;
+  }
+
+  /** The property of an object of unknown type: only if exactly one class has a property of that name. */
+  onlyProperty(name) {
+    const owners = (this.classesByMember.get(name) ?? []).filter((cls) => this.property({ kind: "class", name: cls }, name));
+    return owners.length === 1 ? this.property({ kind: "class", name: owners[0] }, name) : null;
+  }
+
   /** What a call of this entry gives back (section 4): a list of X, a class, or null. */
   typeOfEntry(entry) {
     const raw = entry.raw;
@@ -102,23 +122,26 @@ export class Catalogue {
    * The callable entries a name list offers on this type, most used first, in groups:
    * {known, groups: [{title, entries}]}. Groups are the catalogue's sections; for an object of unknown type they are
    * the classes (section 4, step 3). A list is Python's own, so it is unknown here.
+   * With `properties`, the list is what an attribute read offers (the properties of a class, the values of `f`) and not
+   * what a call offers.
    */
-  scope(type) {
+  scope(type, { properties = false } = {}) {
     if (type && type.kind === "list") type = null;
-    const key = type ? `${type.kind}:${type.name ?? ""}` : "unknown";
-    if (!this.scopes.has(key)) this.scopes.set(key, this.buildScope(type));
+    const key = `${properties ? "properties:" : ""}${type ? `${type.kind}:${type.name ?? ""}` : "unknown"}`;
+    if (!this.scopes.has(key)) this.scopes.set(key, this.buildScope(type, properties));
     return this.scopes.get(key);
   }
 
-  buildScope(type) {
-    const callable = (entry) => entry.raw.kind !== "property" && entry.raw.kind !== "value";
+  buildScope(type, properties) {
+    const isValue = (entry) => entry.raw.kind === "property" || entry.raw.kind === "value";
+    const callable = properties ? isValue : (entry) => !isValue(entry);
     if (!type) {
       const groups = [...this.classes].map(([cls, map]) => ({
         title: cls, entries: [...map.values()].filter(callable).sort(byRank),
       })).filter((g) => g.entries.length);
       return { known: false, groups };
     }
-    const entries = type.kind === "f" ? [...this.functions.values()]
+    const entries = type.kind === "f" ? [...(properties ? this.values : this.functions).values()]
       : type.kind === "library" ? [...(this.libraries.get(type.name)?.values() ?? [])]
         : [...(this.classes.get(type.name)?.values() ?? [])];
     // grouped by section, in the order of the first (most used) entry of each

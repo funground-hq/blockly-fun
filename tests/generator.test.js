@@ -424,3 +424,85 @@ test("the gear: items can be added, taken away and moved, and children follow", 
   workspace.dispose();
   registerBlocks({ words: "scratch", pythonLine: true });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// BF-6: the drawing kit's second part, the events kit, the sound, camera and ml kits, and the attribute block
+
+/** One block as JSON: its fields, its value inputs (blocks or dsl nodes), its statement bodies (arrays) and extraState. */
+const blk = (type, { fields, inputs = {}, body = {}, extra } = {}) => {
+  const wired = {};
+  const json = (node) => node.json ?? node;
+  for (const [slot, value] of Object.entries(inputs)) wired[slot] = { block: json(typeof value === "number" ? n(value) : value) };
+  for (const [slot, statements] of Object.entries(body)) {
+    const blocks = statements.map(json);
+    blocks.forEach((b, i) => { if (blocks[i + 1]) b.next = { block: blocks[i + 1] }; });
+    wired[slot] = { block: blocks[0] };
+  }
+  return {
+    type: "bf_" + type, ...(fields ? { fields } : {}), ...(extra ? { extraState: extra } : {}),
+    ...(Object.keys(wired).length ? { inputs: wired } : {}),
+  };
+};
+const attr = (object, name) => blk("attribute", { fields: { NAME: name }, inputs: { OBJ: object } });
+const lib = (type, inputs) => blk(type, { inputs });
+
+test("the drawing kit's second part: five blocks, and the import and ending a sketch needs", () => {
+  assert.equal(
+    toPython(program(blk("no_outline"), blk("no_fill"), blk("outline_width", { inputs: { N: 3 } }),
+      blk("text_size", { inputs: { N: 24 } }), blk("text_align", { fields: { ALIGN: "right" } }))),
+    "import funground as f\n\nf.no_stroke()\nf.no_fill()\nf.stroke_width(3)\nf.text_size(24)\nf.text_align(\"right\")\nf.show()\n");
+  assert.equal(toPython(program(blk("outline_width"))), "import funground as f\n\nf.stroke_width(None)\nf.show()\n", "an empty slot makes None");
+});
+
+test("the events kit: two hats with the global rule, f.key, and a program with one ends with f.run()", () => {
+  const code = toPython(program(
+    s.set("score", n(0)),
+    blk("key_pressed", { body: { DO: [s.change("score", n(1)), s.set("last", blk("sketch_value", { fields: { WHAT: "key" } }))] } }),
+    blk("mouse_pressed", { body: { DO: [s.circle(n(1), n(2), n(3))] } })));
+  assert.equal(code,
+    "import funground as f\n\nscore = 0\ndef key_pressed():\n    global score\n    score += 1\n    last = f.key\n" +
+    "def mouse_pressed():\n    f.circle(1, 2, 3)\n\n\nf.run()\n");
+  // a hat that sets nothing the program uses elsewhere has no global line; without a hat of the loop, f.show()
+  assert.equal(toPython(program(blk("mouse_pressed", { body: { DO: [s.circle(n(1), n(2), n(3))] } }))),
+    "import funground as f\n\ndef mouse_pressed():\n    f.circle(1, 2, 3)\n\n\nf.run()\n");
+});
+
+test("the sound, camera and ml kits: library values and one statement, each with its import", () => {
+  assert.equal(toPython(program(
+    s.set("cam", blk("camera_open")),
+    s.set("body", lib("ml_pose", { SRC: x("cam") })),
+    blk("ml_teach", { inputs: { NAME: t("fist"), SRC: x("cam") } }),
+    s.set("song", lib("sound_melody", { TEXT: t("C D E") })),
+    s.set("a", blk("sound_note", { inputs: { NOTE: t("C4"), SECONDS: 1 } })),
+    s.set("b", blk("sound_tone", { inputs: { HZ: 440, SECONDS: 1 } })),
+    s.set("mic", blk("sound_microphone")),
+    s.set("h", lib("ml_hand", { SRC: x("cam") })), s.set("g", lib("ml_guess", { SRC: x("cam") })),
+    s.set("w", lib("ml_words", { SRC: x("mic") })), s.set("d", lib("ml_sound", { SRC: x("mic") })))),
+  "from funground import camera\nfrom funground import ml\nfrom funground import sound\n\n" +
+  "cam = camera.open()\nbody = ml.pose(cam)\nml.teach(\"fist\", cam)\nsong = sound.melody(\"C D E\")\na = sound.note(\"C4\", 1)\n" +
+  "b = sound.tone(440, 1)\nmic = sound.microphone()\nh = ml.hand(cam)\ng = ml.guess(cam)\nw = ml.words(mic)\nd = ml.sound(mic)\n");
+  // a kit value is a call, so it takes brackets where Python wants them, and a method of it needs none
+  assert.equal(expr(v.method(blk("sound_tone", { inputs: { HZ: 440, SECONDS: 1 } }), "play")),
+    "from funground import sound\n\nr = sound.tone(440, 1).play()\n");
+  // already imported in Python code: no second import
+  assert.equal(toPython(program(s.code("from funground import sound"), s.set("m", blk("sound_microphone")))),
+    "from funground import sound\nm = sound.microphone()\n");
+});
+
+test("the attribute block: object.name, chains, whole numbers, and the import a module's attribute needs", () => {
+  assert.equal(body(expr(attr(attr(x("body"), "nose"), "x"))), "body.nose.x");
+  assert.equal(body(expr(v.add(attr(x("body"), "score"), 1))), "body.score + 1");
+  assert.equal(toPython(program(s.method(attr(x("snap"), "size"), "count", n(1)))), "snap.size.count(1)\n");
+  assert.equal(body(expr(attr(v.method(x("cam"), "picture"), "width"))), "cam.picture().width");
+  assert.equal(body(expr(attr(v.add(x("a"), x("b")), "real"))), "(a + b).real", "brackets where the object needs them");
+  assert.equal(body(expr(attr(attr(x("a"), "b"), "c"))), "a.b.c");
+  // `1.real` is not Python; the generator brackets a whole number, for an attribute and for a call
+  assert.equal(body(expr(attr(n(1), "real"))), "(1).real");
+  assert.equal(body(expr(v.method(n(1), "bit_length"))), "(1).bit_length()");
+  assert.equal(body(expr(attr(n(1.5), "real"))), "1.5.real");
+  assert.equal(body(expr(attr(v.neg(n(1)), "real"))), "(-x).real".replace("x", "1"));
+  // a module or funground library named as the object is imported for the program, as for a call
+  assert.equal(toPython(program(s.set("p", attr(x("math"), "pi")))), "import math\n\np = math.pi\n");
+  assert.equal(toPython(program(s.set("p", attr(x("sound"), "something")))), "from funground import sound\n\np = sound.something\n");
+  assert.equal(toPython(program(s.set("p", attr(x("robot"), "arm")))), "p = robot.arm\n");
+});

@@ -6,8 +6,8 @@
 // as JSON loads under either setting and makes the same Python.
 //
 // A third setting, `catalogue` (funground's catalogue, Funground_Calls_Note.md), changes only how the two general call
-// blocks are shown and edited: a searchable name list, labelled slots, a tooltip and Help. Their JSON and Python are
-// exactly what they are without it.
+// blocks and the attribute block are shown and edited: a searchable name list, labelled slots, a tooltip and Help. Their
+// JSON and Python are exactly what they are without it. (Choosing a name that has a kit block puts that block in: BF-6.)
 
 import * as Blockly from "blockly";
 import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX } from "./table.js";
@@ -15,6 +15,7 @@ import { createCatalogue } from "../catalogue/index.js";
 import { FieldCatalogueName } from "../catalogue/field.js";
 import { lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
 import { defaultFor } from "../catalogue/slots.js";
+import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
 
 export { PREFIX };
 export const typeOf = (id) => PREFIX + id;
@@ -195,7 +196,7 @@ function makeField(spec, rows) {
         return new FieldCatalogueName(spec.default, nameValidator, {
           catalogue: settings.catalogue,
           scratch: words === "scratch",
-          onChoose: (block, entry) => adoptSignature(block, rows.def, settings, entry),
+          onChoose: (block, entry) => chooseEntry(block, entry, rows.def, settings),
         });
       }
       return new Blockly.FieldTextInput(spec.default, nameValidator);
@@ -369,6 +370,51 @@ function rebuild(block, def, settings, state, remap = new Map(), strict = false)
     else target.getSourceBlock().dispose(false);
   }
   if (block.bfCatalogue) refreshCall(block);
+}
+
+/**
+ * A row was chosen in the name list. A name with a kit block that fits puts the kit block in the general block's place
+ * (BF-6); any other name builds the call's slots (an attribute block has none to build).
+ */
+function chooseEntry(block, entry, def, settings) {
+  const kit = kitFor(entry);
+  if (kit && kitFits(block, entry, kit)) swapForKit(block, kit);
+  else if (block.bfState?.args) adoptSignature(block, def, settings, entry);
+}
+
+/**
+ * Puts the kit block in the place of a general block, in one undo step. The arguments the general block has move over
+ * one to one (kitFits has seen to it that they fit); with none, the kit block comes with the toolbox's values. The
+ * block keeps its place (in its stack, in its slot, or on the page), its comment and its blank lines.
+ */
+function swapForKit(block, kit) {
+  const { def, fields } = kit;
+  const workspace = block.workspace;
+  const inputs = {};
+  slotNames(def).forEach((slot, i) => {
+    const connection = block.getInput("ARG" + i)?.connection;
+    const child = connection?.targetBlock();
+    if (child && !child.isShadow()) inputs[slot] = { block: Blockly.serialization.blocks.save(child, { saveIds: false }) };
+    else if (child) inputs[slot] = { shadow: connection.getShadowState(true) };
+  });
+  const state = block.bfState?.args?.length ? { type: typeOf(def.type), inputs } : toolboxBlock(def.type);
+  if (fields && Object.keys(fields).length) state.fields = fields;
+  const where = block.getRelativeToSurfaceXY();
+  const wasGroup = Blockly.Events.getGroup();
+  Blockly.Events.setGroup(true);
+  try {
+    const next = Blockly.serialization.blocks.append(state, workspace, { recordUndo: true });
+    const place = block.previousConnection?.targetConnection ?? block.outputConnection?.targetConnection ?? null;
+    block.unplug(true);
+    if (place) place.connect(next.previousConnection ?? next.outputConnection);
+    else next.moveBy(where.x, where.y);
+    if (next.bfData && block.bfData) next.bfData = { ...block.bfData };
+    const comment = block.getCommentText();
+    if (comment !== null && comment !== undefined) next.setCommentText(comment);
+    block.dispose(false);
+  } finally {
+    Blockly.Events.setGroup(wasGroup);
+  }
 }
 
 /**
@@ -557,7 +603,7 @@ function definition(def, settings) {
   return {
     init() {
       this.bfData = { blank: 0, trailing: false };
-      this.bfCatalogue = def.mutator === "args" ? settings.catalogue : undefined;
+      this.bfCatalogue = def.mutator === "args" || def.property ? settings.catalogue : undefined;
       if (def.hat) this.hat = "cap";   // a rounded top, as Scratch's "when ... clicked" (the renderer reads it)
       this.setColour(hueOf(def));
       this.setInputsInline(true);

@@ -12,6 +12,7 @@
 
 import * as Blockly from "blockly";
 import { PREFIX } from "../blocks/table.js";
+import { KIT_CALLS } from "./kit.js";
 
 const T = (id) => PREFIX + id;
 const VALUE_INPUT = Blockly.ConnectionType.INPUT_VALUE;
@@ -61,6 +62,12 @@ export class TypeWalk {
   /** The type of `type.name` (a call or a property). */
   step(type, name) {
     const entry = this.catalogue.member(type, name);
+    return entry ? this.catalogue.typeOfEntry(entry) : null;
+  }
+
+  /** The type of reading the property `name` of a `type` (an attribute, not a call). */
+  stepProperty(type, name) {
+    const entry = this.catalogue.property(type, name);
     return entry ? this.catalogue.typeOfEntry(entry) : null;
   }
 
@@ -139,11 +146,21 @@ export class TypeWalk {
         this.inputs(b, ["OBJ"]);
         return this.step(object, b.getFieldValue("NAME"));
       }
+      case T("attribute"): {
+        const object = this.input(b, "OBJ");
+        this.sites.push({ block: b, text: null, type: object });
+        this.objects.set(b.id, object);
+        this.inputs(b, ["OBJ"]);
+        return this.stepProperty(object, b.getFieldValue("NAME"));
+      }
       case T("code_value"):
         return this.scan(b, b.getFieldValue("TEXT")).whole;
-      default:
+      default: {
         this.inputs(b, []);
-        return null;
+        // a kit block of a library call (`sound.tone(440, 1)`, `ml.pose(cam)`) gives back what the call does
+        const kit = KIT_CALLS.get(b.type);
+        return kit && this.catalogue.isLibrary(kit.owner) ? this.step({ kind: "library", name: kit.owner }, kit.name) : null;
+      }
     }
   }
 

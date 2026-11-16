@@ -8,20 +8,26 @@ import { slotLabel, positionalParams } from "./slots.js";
 import { staticType } from "./types.js";
 
 const METHODS = new Set([PREFIX + "method", PREFIX + "method_value"]);
+const ATTRIBUTE = PREFIX + "attribute";
 
-/** True for the call blocks that have an object (`object.name(...)`); a bare `name(...)` has no list. */
-export const isMethodBlock = (block) => METHODS.has(block.type);
+/** True for the blocks that have an object (`object.name(...)`, `object.name`); a bare `name(...)` has no list. */
+export const isMethodBlock = (block) => METHODS.has(block.type) || block.type === ATTRIBUTE;
+
+/** True for an attribute read (BF-D-037): its list is the object's properties, not its methods. */
+export const isAttributeBlock = (block) => block.type === ATTRIBUTE;
 
 /**
- * The catalogue entry of a method block (`object.name(...)`), or null. The object's type is the type rule's
- * (types.js). If it is unknown, a name that only one class has is still that class's; otherwise null: no guess.
- * `fresh` works the types out now if they are stale; without it the last answer is used (cheap enough to draw with).
+ * The catalogue entry of a method block (`object.name(...)`) or an attribute block (`object.name`), or null. The
+ * object's type is the type rule's (types.js). If it is unknown, a name that only one class has is still that class's;
+ * otherwise null: no guess. `fresh` works the types out now if they are stale; without it the last answer is used
+ * (cheap enough to draw with).
  */
 export function lookupEntry(block, catalogue, fresh = false) {
-  if (!METHODS.has(block.type)) return null;
+  if (!isMethodBlock(block)) return null;
   const tracker = block.workspace?.bfTypes;
   const type = tracker ? (fresh ? tracker.objectType(block) : tracker.peekObjectType(block)) : staticType(block, catalogue);
   const name = block.getFieldValue("NAME");
+  if (isAttributeBlock(block)) return catalogue.property(type, name) ?? (type ? null : catalogue.onlyProperty(name));
   return type ? catalogue.member(type, name) : catalogue.onlyMember(name);
 }
 

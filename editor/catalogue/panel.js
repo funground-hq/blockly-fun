@@ -17,6 +17,7 @@ const CSS = `
 .bf-cat-row.bf-cat-on, .bf-cat-row:hover { background: #dcecff; }
 .bf-cat-name { font-weight: bold; }
 .bf-cat-sig { font: 12px monospace; color: #555; margin-left: 6px; }
+.bf-cat-kit { margin-left: 6px; padding: 0 5px; font-size: 11px; color: #1b5e20; background: #e3f2e1; border-radius: 8px; }
 .bf-cat-plain { color: #444; }
 .bf-cat-empty { padding: 8px; color: #666; }
 .bf-cat-footer { padding: 6px 8px; border-top: 1px solid #ddd; min-height: 1em; }
@@ -37,13 +38,15 @@ export class NamePanel {
    * @param catalogue  the Catalogue (for reference links)
    * @param scope      catalogue.scope(type): what the list offers
    * @param name       the name now in the field (an unknown object's classes with this name come first)
+   * @param kitOf      entry => the kit block of that name, or null: a row with one says "has its own block"
    * @param onChoose   called with the entry a row stands for
    */
-  constructor({ document, catalogue, scope, name = "", onChoose }) {
+  constructor({ document, catalogue, scope, name = "", kitOf = () => null, onChoose }) {
     this.document = document;
     this.catalogue = catalogue;
     this.scope = scope;
     this.name = name;
+    this.kitOf = kitOf;
     this.onChoose = onChoose;
     this.query = "";
     this.rows = [];
@@ -114,7 +117,14 @@ export class NamePanel {
     const plain = doc.createElement("div");
     plain.className = "bf-cat-plain";
     plain.textContent = entry.plain;
-    row.append(name, signature, plain);
+    row.append(name, signature);
+    if (this.kitOf(entry)) {
+      const kit = doc.createElement("span");
+      kit.className = "bf-cat-kit";
+      kit.textContent = "has its own block";
+      row.append(kit);
+    }
+    row.append(plain);
     row.addEventListener("click", () => this.onChoose(entry));
     row.addEventListener("mouseenter", () => this.highlight(this.rows.findIndex((r) => r.element === row)));
     this.list.appendChild(row);

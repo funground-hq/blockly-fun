@@ -195,15 +195,18 @@ function importedByCode(workspace) {
   return found;
 }
 
+// The hats that need the loop: f.run() ends a program that has one (f.show() draws once and stops)
+const FRAME_HATS = ["sketch_frame", "key_pressed", "mouse_pressed"].map(typeOf);
+
 /**
- * How a sketch ends: `frame` when an "every frame" hat is there (f.run()); `written` when a top-level statement
+ * How a sketch ends: `frame` when an "every frame" hat or an event hat is there (f.run(): the events need the loop, BF-D-034); `written` when a top-level statement
  * already calls f.run(...) or f.show(...) (a general call block, or Python code), so the generator adds none.
  */
 function sketchEnding(tops) {
   let frame = false;
   let written = false;
   for (const top of tops) {
-    if (top.type === typeOf("sketch_frame")) frame = true;
+    if (FRAME_HATS.includes(top.type)) frame = true;
     for (let block = top; block; block = block.getNextBlock()) {
       if (block.type === typeOf("method")) {
         const object = block.getInputTargetBlock("OBJ");
@@ -394,6 +397,8 @@ const hat = (header) => (b) => {
 };
 define("sketch_start", hat("def setup()"));
 define("sketch_frame", hat("def draw()"));
+define("key_pressed", hat("def key_pressed()"));       // BF-D-034
+define("mouse_pressed", hat("def mouse_pressed()"));
 
 const drawing = (id, name, slots) => define(id, (b) => {
   g.needs("funground");
@@ -407,7 +412,36 @@ drawing("circle", "circle", ["X", "Y", "D"]);
 drawing("rectangle", "rect", ["X", "Y", "W", "H"]);
 drawing("line", "line", ["X1", "Y1", "X2", "Y2"]);
 drawing("write", "text", ["TEXT", "X", "Y"]);
+// the drawing kit, part 2 (BF-D-033)
+drawing("no_outline", "no_stroke", []);
+drawing("no_fill", "no_fill", []);
+drawing("outline_width", "stroke_width", ["N"]);
+drawing("text_size", "text_size", ["N"]);
+define("text_align", (b) => { g.needs("funground"); return line(`f.text_align(${quote(b.getFieldValue("ALIGN"))})`); });
 define("sketch_value", (b) => { g.needs("funground"); return [`f.${b.getFieldValue("WHAT")}`, ORDER.CALL]; });
+
+// Sound, camera and ml (BF-D-035, BF-D-036): a call of a funground library, `library.name(slots)`. The library's import
+// is written for the program (`from funground import sound`), as for a general call on it.
+const libraryCall = (owner, name, slots) => (b) => {
+  g.needs(owner);
+  return `${owner}.${name}(${slots.map((slot) => g.need(b, slot)).join(", ")})`;
+};
+const libraryValue = (id, owner, name, slots) => {
+  const code = libraryCall(owner, name, slots);
+  define(id, (b) => [code(b), ORDER.CALL]);
+};
+libraryValue("sound_melody", "sound", "melody", ["TEXT"]);
+libraryValue("sound_note", "sound", "note", ["NOTE", "SECONDS"]);
+libraryValue("sound_tone", "sound", "tone", ["HZ", "SECONDS"]);
+libraryValue("sound_microphone", "sound", "microphone", []);
+libraryValue("camera_open", "camera", "open", []);
+libraryValue("ml_pose", "ml", "pose", ["SRC"]);
+libraryValue("ml_hand", "ml", "hand", ["SRC"]);
+libraryValue("ml_guess", "ml", "guess", ["SRC"]);
+libraryValue("ml_words", "ml", "words", ["SRC"]);
+libraryValue("ml_sound", "ml", "sound", ["SRC"]);
+const teach = libraryCall("ml", "teach", ["NAME", "SRC"]);
+define("ml_teach", (b) => line(teach(b)));
 
 // Calling anything else ----------------------------------------------------------------------------------------
 const MODULES = new Set([...IMPORT_ORDER, ...LIBRARIES]);
@@ -418,12 +452,17 @@ function argumentList(b) {
   }).join(", ");
 }
 const callCode = (b) => `${b.getFieldValue("NAME")}(${argumentList(b)})`;
-const methodCode = (b) => {
+// The code of a call's or an attribute's object. A module or funground library named as a variable is imported for
+// the program; a whole number is put in brackets (`(1).real`: `1.real` is not Python).
+function objectCode(b) {
   const object = b.getInputTargetBlock("OBJ");
   if (object && object.type === typeOf("variable") && MODULES.has(object.getFieldValue("VAR"))) {
     g.needs(object.getFieldValue("VAR"));
-  }  return `${g.need(b, "OBJ", ORDER.CALL)}.${callCode(b)}`;
-};
+  }
+  const code = g.need(b, "OBJ", ORDER.CALL);
+  return object && object.type === typeOf("number") && /^\d+$/.test(code) ? `(${code})` : code;
+}
+const methodCode = (b) => `${objectCode(b)}.${callCode(b)}`;
 // a call of a block the learner made: a count of positional arguments, a name that is only a label
 const ownCode = (b) => {
   const values = Array.from({ length: b.bfState.args }, (_, i) => g.need(b, "ARG" + i));
@@ -435,6 +474,8 @@ define("call", (b) => line(callCode(b)));
 define("call_value", (b) => [callCode(b), ORDER.CALL]);
 define("method", (b) => line(methodCode(b)));
 define("method_value", (b) => [methodCode(b), ORDER.CALL]);
+// An attribute read, `object.name` (BF-D-037)
+define("attribute", (b) => [`${objectCode(b)}.${b.getFieldValue("NAME")}`, ORDER.CALL]);
 
 // Python code --------------------------------------------------------------------------------------------------
 define("code", (b) => {

@@ -97,15 +97,13 @@ const num = (n) => ({ type: typeOf("number"), fields: { NUM: String(n) } });
 const text = (t) => ({ type: typeOf("text"), fields: { TEXT: t } });
 
 test("choosing a name builds its required slots, with values that run", () => {
-  assert.match(chosen("text_align").python, /f\.text_align\("left"\)\n$/);
-  assert.match(chosen("circle").python, /f\.circle\(100, 100, 100\)\n$/);
-  assert.match(chosen("fill").python, /f\.fill\("tomato"\)\n$/);
-  assert.match(chosen("no_stroke").python, /f\.no_stroke\(\)\n$/);
+  assert.match(chosen("text_align").python, /f\.text_align\("left"\)\n$/, "a kit row that does not fit one to one is built as a call");
+  assert.match(chosen("translate").python, /f\.translate\(100, 100\)\n$/);
   assert.match(chosen("load_image").python, /f\.load_image\(None\)\n$/, "an empty slot makes None, which Python accepts");
 });
 
 test("choosing a name gives exactly what the same block is today with that name typed", () => {
-  for (const [name, values] of [["text_align", [text("left")]], ["circle", [num(100), num(100), num(100)]], ["fill", [text("tomato")]]]) {
+  for (const [name, values] of [["text_align", [text("left")]], ["translate", [num(100), num(100)]]]) {
     assert.deepEqual(chosen(name), typed(name, values), name);
   }
 });

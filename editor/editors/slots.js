@@ -8,63 +8,15 @@
 //     slots are the {NAMES} in the template.
 // Anything else (no catalogue, no entry, no kind) gives null: the plain field stays.
 
-import { BY_TYPE, PREFIX } from "../blocks/table.js";
+import { PREFIX } from "../blocks/table.js";
 import { typeOf } from "../blocks/register.js";
 import { lookupEntry } from "../catalogue/call_block.js";
+import { templateOf } from "../catalogue/kit.js";
 import { positionalParams } from "../catalogue/slots.js";
 
+export { templateOf };
+
 const ARG = /^ARG(\d+)$/;
-
-/** Splits at commas outside brackets and quotes. */
-function splitArgs(text) {
-  const parts = [];
-  let depth = 0;
-  let quote = null;
-  let start = 0;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quote) {
-      if (ch === quote) quote = null;
-    } else if (ch === "\"" || ch === "'") quote = ch;
-    else if ("([{".includes(ch)) depth++;
-    else if (")]}".includes(ch)) depth--;
-    else if (ch === "," && depth === 0) {
-      parts.push(text.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(text.slice(start));
-  return parts.map((p) => p.trim()).filter((p) => p !== "");
-}
-
-const templates = new Map();
-
-/**
- * What a kit block calls, from its Python template: `f.rect({X}, {Y}, {W}, {H})` gives
- * {owner: "f", name: "rect", slots: {X: {position: 0}, ...}}; `name={SLOT}` gives {keyword: "name"}. null when the
- * template is not a call of that shape (a def, a loop, a bare value).
- */
-export function templateOf(type) {
-  if (templates.has(type)) return templates.get(type);
-  const python = BY_TYPE[type.slice(PREFIX.length)]?.python;
-  const match = typeof python === "string" ? /^(\w+)\.(\w+)\((.*)\)$/.exec(python) : null;
-  let found = null;
-  if (match) {
-    const slots = {};
-    let position = 0;
-    for (const part of splitArgs(match[3])) {
-      const slot = /^(?:(\w+)=)?\{(\w+)\}$/.exec(part);
-      if (!slot) {
-        if (!/^\w+=/.test(part)) position++;          // a fixed argument still takes its place
-        continue;
-      }
-      slots[slot[2]] = slot[1] ? { keyword: slot[1] } : { position: position++ };
-    }
-    found = { owner: match[1], name: match[2], slots };
-  }
-  templates.set(type, found);
-  return found;
-}
 
 /** The input of a parent block this value block is plugged into, or null. */
 const inputOf = (block) => block.outputConnection?.targetConnection?.getParentInput() ?? null;
