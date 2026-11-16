@@ -3,6 +3,7 @@
 
 import * as Blockly from "blockly";
 import { FieldAngle, FieldColour, FieldGridDropdown, FieldMultilineInput, FieldSlider } from "./plugins.js";
+import { writesOnFinish } from "../blocks/finish.js";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Numbers: a dial and a slider that keep the number as text
@@ -35,8 +36,9 @@ const keepsText = (Base) => class extends Base {
   }
 };
 
-class DialField extends keepsText(FieldAngle) {}
-class SliderField extends keepsText(FieldSlider) {}
+class DialField extends keepsText(writesOnFinish(FieldAngle)) {}
+class SliderField extends keepsText(writesOnFinish(FieldSlider)) {}
+class LinesField extends writesOnFinish(FieldMultilineInput) {}
 
 /**
  * funground's angles are in degrees, from the right (3 o'clock), turning clockwise on the screen (y points down):
@@ -56,7 +58,7 @@ export const dial = (text) => {
 export const slide = (text, { low, high, step }) => new SliderField(text, low, high, step);
 
 /** Several lines of Python. */
-export const multiline = (text) => new FieldMultilineInput(text);
+export const multiline = (text) => new LinesField(text);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Colours: a grid of funground's names, and "More colours"

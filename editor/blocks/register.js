@@ -16,6 +16,7 @@ import { FieldCatalogueName } from "../catalogue/field.js";
 import { isBareCall, lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
 import { defaultFor } from "../catalogue/slots.js";
 import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
+import { FieldText } from "./finish.js";
 
 export { PREFIX };
 export const typeOf = (id) => PREFIX + id;
@@ -199,13 +200,13 @@ function makeField(spec, rows) {
           onChoose: (block, entry) => chooseEntry(block, entry, rows.def, settings),
         });
       }
-      return new Blockly.FieldTextInput(spec.default, nameValidator);
-    case "number": return new Blockly.FieldTextInput(spec.default, numberValidator);
+      return new FieldText(spec.default, nameValidator);
+    case "number": return new FieldText(spec.default, numberValidator);
     case "label": return new Blockly.FieldLabelSerializable(spec.default);
-    case "params": return new Blockly.FieldTextInput(spec.default, paramsValidator);
+    case "params": return new FieldText(spec.default, paramsValidator);
     case "dropdown":
       return new Blockly.FieldDropdown(spec.options.map((o) => [o[words], o.value]));
-    default: return new Blockly.FieldTextInput(spec.default); // text, code
+    default: return new FieldText(spec.default); // text, code
   }
 }
 
@@ -319,7 +320,7 @@ function layout(block, def, settings, state) {
       const label = rows.text(plain);
       if (labelled && label) block.bfSlotLabels[i] = { field: label, plain, positional: kind === "p" };
       if (kind === "k") {
-        rows.pending.push([new Blockly.FieldTextInput("key", nameValidator), "KW" + i]);
+        rows.pending.push([new FieldText("key", nameValidator), "KW" + i]);
         rows.text("=");
       }
       rows.value("ARG" + i);
