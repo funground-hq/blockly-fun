@@ -27,22 +27,29 @@
 /** The prefix of every block type the editor registers ("bf_" + the type of the table). */
 export const PREFIX = "bf_";
 
+// Each category has a colour (hex; BF-D-047, from the Scratch family: Block_Colours_Note.md) and an icon (BF-D-041: the
+// toolbox is a column of icons, see toolbox_icons.js). "Drawing" is two categories, two teals. The sketch's hats and the
+// "when a key is pressed" hats are all in Events, as in Scratch.
 export const CATEGORIES = [
-  { id: "saying", name: "Saying and asking", colour: 290 },
-  { id: "values", name: "Values", colour: 160 },
-  { id: "variables", name: "Variables", colour: 330 },
-  { id: "maths", name: "Numbers and maths", colour: 120 },
-  { id: "logic", name: "Comparing and logic", colour: 210 },
-  { id: "control", name: "Control", colour: 40 },
-  { id: "lists", name: "Lists and text", colour: 15 },
-  { id: "functions", name: "Your own blocks", colour: 260 },
-  { id: "drawing", name: "Drawing", colour: 60 },
-  { id: "events", name: "Events", colour: 90 },
-  { id: "sound", name: "Sound", colour: 310 },
-  { id: "camera", name: "Camera and ml", colour: 235 },
-  { id: "calls", name: "Calling anything else", colour: 185 },
-  { id: "code", name: "Python code", colour: "#6e6e6e" },
+  { id: "saying", name: "Saying and asking", colour: "#9966FF", icon: "bubble" },
+  { id: "values", name: "Values", colour: "#59C059", icon: "dot" },
+  { id: "variables", name: "Variables", colour: "#FF8C1A", icon: "box" },
+  { id: "maths", name: "Numbers and maths", colour: "#59C059", icon: "plus" },
+  { id: "logic", name: "Comparing and logic", colour: "#3E9E43", icon: "eq" },
+  { id: "control", name: "Control", colour: "#FFAB19", icon: "loop" },
+  { id: "lists", name: "Lists and text", colour: "#FF661A", icon: "list" },
+  { id: "functions", name: "Your own blocks", colour: "#FF6680", icon: "puzzle" },
+  { id: "shapes", name: "Shapes and text", colour: "#0FBD8C", icon: "shape" },
+  { id: "canvas", name: "Colour, lines and canvas", colour: "#0A8A66", icon: "drop" },
+  { id: "events", name: "Events", colour: "#FFBF00", icon: "bolt" },
+  { id: "sound", name: "Sound", colour: "#CF63CF", icon: "note" },
+  { id: "camera", name: "Camera and ml", colour: "#5CB1D6", icon: "cam" },
+  { id: "calls", name: "Calling anything else", colour: "#969696", icon: "call" },
+  { id: "code", name: "Python code", colour: "#5E5E5E", icon: "code" },
 ];
+
+/** The colour of a category, by id. */
+export const categoryColour = (id) => CATEGORIES.find((c) => c.id === id).colour;
 
 const opt = (value, scratch, python = scratch) => ({ value, scratch, python });
 
@@ -252,44 +259,44 @@ export const BLOCKS = [
   // Drawing (phase C+, BF-D-022): a sketch with funground, `import funground as f`. The two hats are setup() and
   // draw(); the generator writes the import, the `global` line of each hat and the f.run() (or f.show()) at the end.
   {
-    type: "sketch_start", kind: "statement", top: true, hat: true, cat: "drawing", body: ["DO"],
+    type: "sketch_start", kind: "statement", top: true, hat: true, cat: "events", body: ["DO"],
     scratch: "when the sketch starts", python: "def setup()", line: "def setup():",
   },
   {
-    type: "sketch_frame", kind: "statement", top: true, hat: true, cat: "drawing", body: ["DO"],
+    type: "sketch_frame", kind: "statement", top: true, hat: true, cat: "events", body: ["DO"],
     scratch: "every frame", python: "def draw()", line: "def draw():",
   },
-  { type: "canvas_size", kind: "statement", cat: "drawing", scratch: "canvas size {W} by {H}", call: "f.size", python: "f.size({W}, {H})", line: "f.size(W, H)" },
-  { type: "background", kind: "statement", cat: "drawing", scratch: "background {COLOR}", call: "f.background", python: "f.background({COLOR})", line: "f.background(x)" },
-  { type: "fill", kind: "statement", cat: "drawing", scratch: "fill colour {COLOR}", call: "f.fill", python: "f.fill({COLOR})", line: "f.fill(x)" },
-  { type: "outline", kind: "statement", cat: "drawing", scratch: "outline colour {COLOR}", call: "f.stroke", python: "f.stroke({COLOR})", line: "f.stroke(x)" },
+  { type: "canvas_size", kind: "statement", cat: "canvas", scratch: "canvas size {W} by {H}", call: "f.size", python: "f.size({W}, {H})", line: "f.size(W, H)" },
+  { type: "background", kind: "statement", cat: "canvas", scratch: "background {COLOR}", call: "f.background", python: "f.background({COLOR})", line: "f.background(x)" },
+  { type: "fill", kind: "statement", cat: "canvas", scratch: "fill colour {COLOR}", call: "f.fill", python: "f.fill({COLOR})", line: "f.fill(x)" },
+  { type: "outline", kind: "statement", cat: "canvas", scratch: "outline colour {COLOR}", call: "f.stroke", python: "f.stroke({COLOR})", line: "f.stroke(x)" },
   {
-    type: "circle", kind: "statement", cat: "drawing",
+    type: "circle", kind: "statement", cat: "shapes",
     scratch: "circle at x {X} y {Y} size {D}", call: "f.circle", python: "f.circle({X}, {Y}, {D})", line: "f.circle(x, y, d)",
   },
   {
-    type: "rectangle", kind: "statement", cat: "drawing",
+    type: "rectangle", kind: "statement", cat: "shapes",
     scratch: "rectangle at x {X} y {Y} width {W} height {H}", call: "f.rect", python: "f.rect({X}, {Y}, {W}, {H})", line: "f.rect(x, y, w, h)",
   },
   {
-    type: "line", kind: "statement", cat: "drawing",
+    type: "line", kind: "statement", cat: "shapes",
     scratch: "line from x {X1} y {Y1} to x {X2} y {Y2}", call: "f.line", python: "f.line({X1}, {Y1}, {X2}, {Y2})", line: "f.line(x1, y1, x2, y2)",
   },
   {
-    type: "write", kind: "statement", cat: "drawing",
+    type: "write", kind: "statement", cat: "shapes",
     scratch: "write {TEXT} at x {X} y {Y}", call: "f.text", python: "f.text({TEXT}, {X}, {Y})", line: "f.text(t, x, y)",
   },
   // The drawing kit, part 2 (BF-D-033): five more of the names the examples use most.
-  { type: "no_outline", kind: "statement", cat: "drawing", call: "f.no_stroke", scratch: "no outline", python: "f.no_stroke()", line: "f.no_stroke()" },
-  { type: "no_fill", kind: "statement", cat: "drawing", call: "f.no_fill", scratch: "no fill", python: "f.no_fill()", line: "f.no_fill()" },
+  { type: "no_outline", kind: "statement", cat: "canvas", call: "f.no_stroke", scratch: "no outline", python: "f.no_stroke()", line: "f.no_stroke()" },
+  { type: "no_fill", kind: "statement", cat: "canvas", call: "f.no_fill", scratch: "no fill", python: "f.no_fill()", line: "f.no_fill()" },
   {
-    type: "outline_width", kind: "statement", cat: "drawing",
+    type: "outline_width", kind: "statement", cat: "canvas",
     call: "f.stroke_width", scratch: "outline width {N}", python: "f.stroke_width({N})", line: "f.stroke_width(N)",
   },
-  { type: "text_size", kind: "statement", cat: "drawing", call: "f.text_size", scratch: "text size {N}", python: "f.text_size({N})", line: "f.text_size(N)" },
+  { type: "text_size", kind: "statement", cat: "shapes", call: "f.text_size", scratch: "text size {N}", python: "f.text_size({N})", line: "f.text_size(N)" },
   {
     // a dropdown of the three words; text_align with any other argument, or vertical=, stays a call block
-    type: "text_align", kind: "statement", cat: "drawing", call: "f.text_align",
+    type: "text_align", kind: "statement", cat: "shapes", call: "f.text_align",
     fields: {
       ALIGN: {
         kind: "dropdown", default: "center",
@@ -299,7 +306,7 @@ export const BLOCKS = [
     scratch: "line up text [ALIGN]", python: "f.text_align([ALIGN])", line: "f.text_align(x)",
   },
   {
-    type: "sketch_value", kind: "value", cat: "drawing",
+    type: "sketch_value", kind: "value", cat: "canvas",
     fields: {
       WHAT: {
         kind: "dropdown", default: "mouse_x",
@@ -313,7 +320,7 @@ export const BLOCKS = [
 
   // Events (BF-D-034): the two events the examples use most. Like the sketch's hats, each is a stack of its own, has the
   // `global` line of the names it sets, and a program with one ends with f.run().
-  // Own category, not Drawing: Scratch keeps "when ... pressed" under Events, and Drawing already holds sixteen blocks.
+  // Events, with the sketch's two hats (BF-D-047): Scratch keeps every "when ..." hat there.
   {
     type: "key_pressed", kind: "statement", top: true, hat: true, cat: "events", body: ["DO"],
     scratch: "when a key is pressed", python: "def key_pressed()", line: "def key_pressed():",

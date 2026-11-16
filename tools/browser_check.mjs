@@ -226,6 +226,23 @@ async function main() {
     await shoot("cplus_bouncing_ball.png");
     await evaluate("window.bfDemo.runner.stop()");
 
+    // BF-10: the toolbox is a column of icons, each with its name as title and aria-label, and a click opens the flyout
+    const rail = await evaluate(`(async () => {
+      const rows = [...document.querySelectorAll(".blocklyToolboxCategoryContainer")];
+      const toolbox = document.querySelector(".blocklyToolbox");
+      const first = rows[0];
+      first.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }));
+      await new Promise((r) => setTimeout(r, 300));
+      const flyout = window.bfEditor.workspace.getFlyout();
+      return { count: rows.length, width: Math.round(toolbox.getBoundingClientRect().width),
+        named: rows.filter((r) => r.title && r.getAttribute("aria-label") === r.title && r.querySelector("svg")).length,
+        text: rows.filter((r) => r.textContent.trim() !== "").length, flyoutOpen: flyout.isVisible() };
+    })()`);
+    report.rail = rail;
+    if (!rail.count || rail.named !== rail.count || rail.text || rail.width > 60 || !rail.flyoutOpen)
+      report.problems.push("the toolbox is not a column of icons: " + JSON.stringify(rail));
+    await shoot("bf10_icon_toolbox.png");
+
     // a switch after a run: the same worker, reused
     report.switches = await evaluate("window.bfDemo.timings.switches");
 
