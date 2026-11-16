@@ -1,0 +1,310 @@
+{
+ "blocks": {
+  "languageVersion": 0,
+  "blocks": [
+   {
+    "type": "bf_set",
+    "fields": {
+     "VAR": "money"
+    },
+    "inputs": {
+     "VALUE": {
+      "shadow": {
+       "type": "bf_number",
+       "fields": {
+        "NUM": "100.0"
+       }
+      }
+     }
+    },
+    "extraState": {
+     "trailing": true
+    },
+    "icons": {
+     "comment": {
+      "text": "starting money",
+      "pinned": false,
+      "height": 80,
+      "width": 160
+     }
+    },
+    "next": {
+     "block": {
+      "type": "bf_set",
+      "fields": {
+       "VAR": "rate"
+      },
+      "inputs": {
+       "VALUE": {
+        "shadow": {
+         "type": "bf_number",
+         "fields": {
+          "NUM": "0.05"
+         }
+        }
+       }
+      },
+      "extraState": {
+       "trailing": true
+      },
+      "icons": {
+       "comment": {
+        "text": "5 percent each year",
+        "pinned": false,
+        "height": 80,
+        "width": 160
+       }
+      },
+      "next": {
+       "block": {
+        "type": "bf_set",
+        "fields": {
+         "VAR": "year"
+        },
+        "inputs": {
+         "VALUE": {
+          "shadow": {
+           "type": "bf_number",
+           "fields": {
+            "NUM": "0"
+           }
+          }
+         }
+        },
+        "next": {
+         "block": {
+          "type": "bf_while",
+          "inputs": {
+           "COND": {
+            "block": {
+             "type": "bf_compare",
+             "fields": {
+              "OP": "<"
+             },
+             "inputs": {
+              "A": {
+               "block": {
+                "type": "bf_variable",
+                "fields": {
+                 "VAR": "money"
+                }
+               }
+              },
+              "B": {
+               "shadow": {
+                "type": "bf_number",
+                "fields": {
+                 "NUM": "200"
+                }
+               }
+              }
+             }
+            }
+           },
+           "DO": {
+            "block": {
+             "type": "bf_set",
+             "fields": {
+              "VAR": "money"
+             },
+             "inputs": {
+              "VALUE": {
+               "block": {
+                "type": "bf_arith",
+                "fields": {
+                 "OP": "+"
+                },
+                "inputs": {
+                 "A": {
+                  "block": {
+                   "type": "bf_variable",
+                   "fields": {
+                    "VAR": "money"
+                   }
+                  }
+                 },
+                 "B": {
+                  "block": {
+                   "type": "bf_arith",
+                   "fields": {
+                    "OP": "*"
+                   },
+                   "inputs": {
+                    "A": {
+                     "block": {
+                      "type": "bf_variable",
+                      "fields": {
+                       "VAR": "money"
+                      }
+                     }
+                    },
+                    "B": {
+                     "block": {
+                      "type": "bf_variable",
+                      "fields": {
+                       "VAR": "rate"
+                      }
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             },
+             "next": {
+              "block": {
+               "type": "bf_set",
+               "fields": {
+                "VAR": "year"
+               },
+               "inputs": {
+                "VALUE": {
+                 "block": {
+                  "type": "bf_arith",
+                  "fields": {
+                   "OP": "+"
+                  },
+                  "inputs": {
+                   "A": {
+                    "block": {
+                     "type": "bf_variable",
+                     "fields": {
+                      "VAR": "year"
+                     }
+                    }
+                   },
+                   "B": {
+                    "shadow": {
+                     "type": "bf_number",
+                     "fields": {
+                      "NUM": "1"
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               },
+               "next": {
+                "block": {
+                 "type": "bf_say",
+                 "extraState": {
+                  "items": 4
+                 },
+                 "inputs": {
+                  "ARG0": {
+                   "shadow": {
+                    "type": "bf_text",
+                    "fields": {
+                     "TEXT": "Year"
+                    }
+                   }
+                  },
+                  "ARG1": {
+                   "block": {
+                    "type": "bf_variable",
+                    "fields": {
+                     "VAR": "year"
+                    }
+                   }
+                  },
+                  "ARG2": {
+                   "shadow": {
+                    "type": "bf_text",
+                    "fields": {
+                     "TEXT": ":"
+                    }
+                   }
+                  },
+                  "ARG3": {
+                   "block": {
+                    "type": "bf_call_value",
+                    "extraState": {
+                     "args": [
+                      "p",
+                      "p"
+                     ]
+                    },
+                    "fields": {
+                     "NAME": "round"
+                    },
+                    "inputs": {
+                     "ARG0": {
+                      "block": {
+                       "type": "bf_variable",
+                       "fields": {
+                        "VAR": "money"
+                       }
+                      }
+                     },
+                     "ARG1": {
+                      "shadow": {
+                       "type": "bf_number",
+                       "fields": {
+                        "NUM": "2"
+                       }
+                      }
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          },
+          "extraState": {
+           "blank": 1
+          },
+          "next": {
+           "block": {
+            "type": "bf_say",
+            "extraState": {
+             "items": 3,
+             "blank": 1
+            },
+            "inputs": {
+             "ARG0": {
+              "shadow": {
+               "type": "bf_text",
+               "fields": {
+                "TEXT": "It took"
+               }
+              }
+             },
+             "ARG1": {
+              "block": {
+               "type": "bf_variable",
+               "fields": {
+                "VAR": "year"
+               }
+              }
+             },
+             "ARG2": {
+              "shadow": {
+               "type": "bf_text",
+               "fields": {
+                "TEXT": "years to double!"
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "x": 20,
+    "y": 0
+   }
+  ]
+ }
+}

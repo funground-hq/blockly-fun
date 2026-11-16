@@ -1,0 +1,38 @@
+// Shared by tests/roundtrip.test.js (CPython) and tools/browser_check.mjs (Pyodide).
+
+// Small programs in the plain style, each aimed at one rule: Python -> blocks -> Python gives the same text.
+export const SNIPPETS = [
+  "x = -5\ny = 2 ** -1\nz = (-2) ** 2\nw = -2 ** 2\n",
+  "a = (b + c) * d\ne = f - (g - h)\ni = not (j and k)\nl = not m == n\n",
+  "x = a[1:2] + 1\ny = (p if q else r) + 1\nz = (a | b) * 2\nw = a is None\n",
+  "x = [n * 2 for n in y]\nprint((1, 2))\npairs = 1, 2\n",
+  "x = None\nprint(None)\n\n\ndef f():\n    return None\n",
+  "def f():\n    return\n",
+  "if a:\n    pass\nelif b:\n    print(1)\nelse:\n    pass\n",
+  "if a:\n    pass\nelse:\n    if b:\n        pass\n",
+  "while True:\n    pass  # later\n",
+  "for i in range(1, 10, 2):\n    print(i)\nfor _ in range(3):\n    print(\"hi\")\nfor i in range(0, 4):\n    pass\n",
+  "items.append(3)\nitems.pop(0)\nitems.pop()\nitems[0] = items[1]\n",
+  "import math\n\nx = math.pi\n",
+  "import random\n\nx = random.choice(y)\n",
+  "import random\nimport time\n\nx = random.randint(1, 6)\ntime.sleep(1)\n",
+  "# alone\n\n# above\nx = 1  # after\n# own\ny = 2\n",
+  "while True:\n    try:\n        x = int(input())\n        break\n    except ValueError:  # not a number\n        pass\n",
+  "@cache\ndef f(n):\n    return n\n",
+  "def f(a, b):\n    def g():\n        pass\n    return a\n\nprint(f(1, 2))\nf(1, b=2)\n",
+  "print(\"a\", end=\"\")\nprint(*items)\nx = sum(n for n in y)\n",
+  "x = \"it's \\\"quoted\\\"\\n\"\ny = f\"{x}!\"\n",
+  "for i in x:\n    y = i\n    # done\nz = 1\n",
+  "x = [\n    1,  # one\n    2,\n]\n",
+  "if a:\n    pass\nelse:  # otherwise\n    pass\n",
+  "x = a and b and c\ny = a or b and c\nz = (a or b) and c\n",
+  "x = 0xff + 1_000\ny = 1.50\n",
+  "",
+  "# only a comment\n",
+  // found by tools/corpus_check.mjs over real code
+  "name = \"Zoë\"\nprint(\"こんにちは,\", name)  # ✓ not ASCII\n",
+  "x = (1 |\n     2)\n\n\ndef f():\n    return (a |\n            b)\n",
+  "def f():\n    \"\"\"Doc\nnot indented\"\"\"\n    return 1\n",
+  "\"\"\"A docstring first.\"\"\"\n\nimport math\n\nx = math.sqrt(2)\n",
+  "import os, time\n\ntime.sleep(1)\n",
+];

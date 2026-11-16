@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>blockly-fun: the bundle</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #blocks { position: absolute; top: 2rem; left: 0; right: 0; bottom: 0; }
+  </style>
+</head>
+<body>
+  <!-- The editor as a host page gets it (phase D): dist/blockly-fun.js and nothing else of blockly-fun, no import map,
+       no Blockly script. Build it first: npm run build. tools/browser_check.mjs reads #status. -->
+  <span id="status">loading</span>
+  <div id="blocks"></div>
+  <canvas id="canvas" width="1" height="1" hidden></canvas>
+  <script type="module">
+    const status = document.getElementById("status");
+    try {
+      const bf = await import("../dist/blockly-fun.js");
+      const { createRunner } = await import("../runner/runner.js");
+      const runner = await createRunner({ canvas: document.getElementById("canvas"), output: () => {}, packages: [], reuse: true });
+      const files = await bf.fetchConverter(new URL("../dist/", import.meta.url));
+      let text = "";
+      const editor = bf.createBlocksEditor({
+        element: document.getElementById("blocks"), media: "../dist/media/",
+        onChange: (python) => { text = python; }, convert: bf.runnerConverter(runner, files),
+      });
+      const source = "import funground as f\n\nx = 0\n\n\ndef draw():\n    global x\n\n    f.circle(x, 200, 40)\n    x += 1\n\n\nf.run()\n";
+      const result = await editor.fromPython(source);
+      const problems = [];
+      if (!result.ok) problems.push(result.message);
+      if (text !== source) problems.push("the text came back as " + JSON.stringify(text));
+      if (!editor.workspace.getBlocksByType("bf_sketch_frame").length) problems.push("no every-frame hat");
+      status.textContent = problems.length ? "PROBLEMS: " + problems.join("; ") : `bundle ok, Blockly ${bf.BLOCKLY_VERSION}`;
+    } catch (error) {
+      status.textContent = "PROBLEMS: " + (error.stack ?? error);
+    }
+  </script>
+</body>
+</html>
