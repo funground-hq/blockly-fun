@@ -95,7 +95,29 @@ function button(mark, title, value) {
  * funground's colours without the numbered shades (antiquewhite1 to 4 and the grays), so the grid is a few rows and
  * not a wall: a name that is not in it still works and shows as typed. Each is {name, hex}.
  */
-export const gridColours = (catalogue) => (catalogue.raw.colors || []).filter((c) => !/\d$/.test(c.name));
+export const gridColours = (catalogue) => (catalogue.raw.colors || [])
+  .filter((c) => !/\d$/.test(c.name))
+  .filter((c, i, all) => all.findIndex((d) => d.hex === c.hex) === i)   // one square for each colour (gray and grey, aqua and cyan)
+  .map((c) => ({ c, place: gridPlace(c.hex) }))
+  .sort((a, b) => a.place.group - b.place.group || a.place.band - b.place.band || b.place.light - a.place.light)
+  .map(({ c }) => c);
+
+/**
+ * Where a colour sits in the grid (the maintainer, 16 Nov: the names had "no theme, reason or rhyme"; E-49). The greys come
+ * first, white to black; then the colours by hue in twelve bands of 30 degrees (red, orange and brown, yellow, green ...,
+ * pink), light to dark in each band. Hue and lightness are HSL's.
+ */
+function gridPlace(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+  const chroma = max - min;
+  const saturation = chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * light - 1));
+  if (saturation < 0.12 || chroma < 0.06) return { group: 0, band: 0, light };            // a grey
+  const hue = max === r ? ((g - b) / chroma + 6) % 6 : max === g ? (b - r) / chroma + 2 : (r - g) / chroma + 4;
+  return { group: 1, band: Math.floor(((hue * 60 + 15) % 360) / 30), light };
+}
 
 /**
  * A text in a colour slot: a grid of colour names. Its last square, "More colours", shows the squares of field-colour

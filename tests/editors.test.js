@@ -13,7 +13,7 @@ import { registerBlocks, typeOf } from "../editor/blocks/register.js";
 import { createCatalogue } from "../editor/catalogue/index.js";
 import { generator } from "../editor/generator/python.js";
 import { EditorTracker } from "../editor/editors/index.js";
-import { ColourNameField } from "../editor/editors/fields.js";
+import { ColourNameField, gridColours } from "../editor/editors/fields.js";
 import { FieldAngle, FieldColour, FieldGridDropdown, FieldMultilineInput, FieldSlider } from "../editor/editors/plugins.js";
 import { templateOf } from "../editor/editors/slots.js";
 import { SNIPPETS } from "./snippets.js";
@@ -555,4 +555,15 @@ test("the plugins' own scripts give the names the editors use, with Blockly as a
     assert.ok(shim.includes(name), `the shim gives ${name}`);
   }
   assert.ok(Object.getPrototypeOf(dom.window.FieldAngle) === dom.window.Blockly.FieldNumber, "built on the page's Blockly");
+});
+
+test("the colour grid is ordered: the greys white to black, then the colours by hue, one square for each colour", () => {
+  const names = gridColours(catalogue).map((c) => c.name);
+  assert.equal(names[0], "white");
+  assert.ok(names.indexOf("black") < names.indexOf("red"), "the greys come before the colours");
+  const hue = ["red", "orange", "yellow", "green", "blue", "purple"].map((name) => names.indexOf(name));
+  assert.deepEqual([...hue].sort((a, b) => a - b), hue, `red to purple in order: ${hue}`);
+  assert.ok(names.indexOf("pink") < names.indexOf("red"), "light before dark in a band");
+  assert.equal(names.includes("gray") + names.includes("grey"), 1, "gray and grey are one square");
+  assert.equal(new Set(gridColours(catalogue).map((c) => c.hex)).size, names.length);
 });
