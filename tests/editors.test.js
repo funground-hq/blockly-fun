@@ -125,9 +125,9 @@ test("a swap is not an edit: it fires no event", async () => {
   });
 });
 
-test("the value is never changed: a number the dial would change keeps the plain field", () => {
+test("the value is never changed: a number the dial would change keeps the plain field (whole degrees from -180 to 359 fit it)", () => {
   withEditors((workspace, editors) => {
-    const cases = { "45": true, "45.0": true, "0": true, "359": true, "-30": false, "450": false, "22.5": false, "360": false, ".5": false };
+    const cases = { "45": true, "45.0": true, "0": true, "359": true, "-30": true, "-180": true, "-359": false, "450": false, "22.5": false, "360": false, ".5": false };
     const blocks = Object.keys(cases).map((value) => [value, add(workspace, call("rotate", [num(value)]))]);
     editors.update();
     for (const [value, block] of blocks) {

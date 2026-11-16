@@ -41,9 +41,16 @@ class SliderField extends keepsText(FieldSlider) {}
 /**
  * funground's angles are in degrees, from the right (3 o'clock), turning clockwise on the screen (y points down):
  * `clockwise: true` with no offset. The dial moves in whole degrees, so a value with a fraction is not taken (see
- * swap in index.js).
+ * swap in index.js). A dial shows one turn: 0 to 360, or -180 to 180 for a negative angle (`rotate(-30)` stays -30),
+ * so every whole angle from -180 to 359 has a dial.
  */
-export const dial = (text) => new DialField(text, undefined, { clockwise: true, offset: 0, min: 0, max: 360, precision: 1 });
+export const dial = (text) => {
+  const [low, high] = Number(text) < 0 ? [-180, 180] : [0, 360];
+  // the plugin clamps the number to 0..360 unless min and max are given: they are the turn too
+  return new DialField(text, undefined, {
+    clockwise: true, offset: 0, displayMin: low, displayMax: high, min: low, max: high, precision: 1,
+  });
+};
 
 /** A slider from `low` to `high` in steps of `step` (the catalogue's parameter kind). */
 export const slide = (text, { low, high, step }) => new SliderField(text, low, high, step);
@@ -137,7 +144,12 @@ export class ColourNameField extends FieldGridDropdown {
     this.bfState.page = page;
     setTimeout(() => {
       const block = this.getSourceBlock();
-      if (block && block.rendered && !block.disposed) this.showEditor_();
+      if (!block || !block.rendered || block.disposed) return;
+      // The grid chosen from is still fading out; its delayed hide would close the new page too (and its dispose sets
+      // the page back to the names). Closed at once here, before the page is chosen.
+      Blockly.DropDownDiv.hideWithoutAnimation();
+      this.bfState.page = page;
+      this.showEditor_();
     }, 0);
   }
 

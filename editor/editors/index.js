@@ -18,7 +18,7 @@
 //
 // A swap never changes the value. The new field is given the old text; if it keeps anything other than that exact
 // text (the dial wraps 450 to 90 and rounds to whole degrees, a slider clamps to its range), the block keeps the
-// plain field. That includes a negative angle for the dial, which it wraps to the other side: `rotate(-30)` keeps its
+// plain field. A negative angle gets a dial of -180 to 180 (fields.js), so `rotate(-30)` keeps -30; `rotate(22.5)` keeps its
 // plain number field.
 
 import * as Blockly from "blockly";
@@ -45,9 +45,14 @@ function swap(block, name, make) {
   if (!replacement || String(replacement.getValue()) !== text) return false;
   const input = field.getParentInput();
   const at = input.fieldRow.indexOf(field);
+  // Blockly's Field.dispose() leaves the field's pointerdown listener on its click target. When the field fills its
+  // block (zelos: a number block in a slot), that target is the block itself, which stays: the old field would go on
+  // taking the clicks and open a plain text box instead of the dial. So the listener goes with the field.
+  const listener = field.mouseDownWrapper;
   Blockly.Events.disable();             // a count: undone by one enable
   try {
     input.removeField(name);
+    if (listener) Blockly.browserEvents.unbind(listener);
     input.insertFieldAt(at, replacement, name);
   } finally {
     Blockly.Events.enable();

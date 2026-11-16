@@ -113,7 +113,7 @@ export class FieldName extends Blockly.FieldDropdown {
 
 // The grey line of Python under a statement's label: the block's own first line, with its real values.
 // Measured at its own small font, so its row is only as tall as its text.
-const LINE_HEIGHT = 11;
+const LINE_HEIGHT = 14;
 const LINE_MAX = 40;
 let lineProvider = null;
 
@@ -212,7 +212,7 @@ function makeField(spec, rows) {
 // ---------------------------------------------------------------------------------------------------------------
 // Style
 
-const CSS = ".injectionDiv .blocklyText.bf-python-line { fill: #d9d9d9; font-size: 8pt; font-weight: normal; font-family: monospace; }";
+const CSS = ".injectionDiv .blocklyText.bf-python-line { fill: #fff; fill-opacity: .85; font-size: 10pt; font-weight: normal; font-family: monospace; }";
 
 function injectStyle() {
   if (typeof document === "undefined" || document.getElementById("bf-style")) return;
