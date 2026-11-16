@@ -6,12 +6,25 @@ import * as Blockly from "blockly";
 import { PREFIX } from "../blocks/table.js";
 import { slotLabel, positionalParams } from "./slots.js";
 import { staticType } from "./types.js";
+import { importsInWorkspace } from "./imports.js";
 
 const METHODS = new Set([PREFIX + "method", PREFIX + "method_value"]);
+const BARE = new Set([PREFIX + "call", PREFIX + "call_value"]);
 const ATTRIBUTE = PREFIX + "attribute";
 
-/** True for the blocks that have an object (`object.name(...)`, `object.name`); a bare `name(...)` has no list. */
+/** True for the blocks that have an object (`object.name(...)`, `object.name`). */
 export const isMethodBlock = (block) => METHODS.has(block.type) || block.type === ATTRIBUTE;
+
+/** True for a bare call, `name(...)` (BF-D-040): its list is Python's built-ins and the names the sketch imports. */
+export const isBareCall = (block) => BARE.has(block.type);
+
+/** The names the sketch imports ([{module, name, alias}]): from the last type update, or fresh if asked. */
+export function importsOf(block, fresh = false) {
+  const tracker = block.workspace?.bfTypes;
+  if (!tracker) return importsInWorkspace(block.workspace);
+  if (fresh && tracker.stale) tracker.update();
+  return tracker.imports;
+}
 
 /** True for an attribute read (BF-D-037): its list is the object's properties, not its methods. */
 export const isAttributeBlock = (block) => block.type === ATTRIBUTE;
@@ -23,6 +36,7 @@ export const isAttributeBlock = (block) => block.type === ATTRIBUTE;
  * (cheap enough to draw with).
  */
 export function lookupEntry(block, catalogue, fresh = false) {
+  if (isBareCall(block)) return catalogue.bareEntry(block.getFieldValue("NAME"), importsOf(block, fresh));
   if (!isMethodBlock(block)) return null;
   const tracker = block.workspace?.bfTypes;
   const type = tracker ? (fresh ? tracker.objectType(block) : tracker.peekObjectType(block)) : staticType(block, catalogue);

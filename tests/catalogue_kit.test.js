@@ -221,8 +221,8 @@ test("an attribute list holds properties and values, never methods", () => {
   assert.deepEqual(names({ kind: "library", name: "sound" }), [], "a library has functions only");
   const unknown = catalogue.scope(null, { properties: true });
   assert.equal(unknown.known, false);
-  assert.ok(unknown.groups.some((g) => g.title === "Body" && g.entries.some((e) => e.name === "nose")));
-  assert.ok(!unknown.groups.some((g) => g.entries.some((e) => e.raw.kind === "method")));
+  assert.deepEqual(unknown.groups, [], "the note alone");
+  assert.equal(catalogue.scope({ kind: "python", name: "str" }, { properties: true }).known, false, "Python's types have no properties to list");
 });
 
 test("the attribute block makes object.name, has no gear, and saves nothing but its name and object", () => {

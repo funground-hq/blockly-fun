@@ -30,22 +30,14 @@ export function searchEntries(entries, query) {
 /**
  * What a name list shows: groups of entries.
  *   scope   catalogue.scope(type)
- *   query   the text typed so far (empty: grouped by section, or by class for an unknown object)
- *   name    the name now in the field: for an unknown object, classes with a member of that name come first
- * With a query, a known scope gives one flat group (no heading); an unknown scope keeps its groups, since the
- * class is what the learner has to choose.
+ *   query   the text typed so far (empty: grouped by section)
+ * With a query, a known scope gives one flat group (no heading). An unknown scope has no groups at all.
  */
-export function searchScope(scope, query, name = "") {
+export function searchScope(scope, query) {
   const q = query.trim();
-  let groups = scope.groups;
-  if (!scope.known) {
-    const has = (g) => g.entries.some((e) => e.name === name);
-    groups = [...groups.filter(has), ...groups.filter((g) => !has(g))];
-  }
+  const groups = scope.groups;
   if (q === "") return groups;
-  if (!scope.known) {
-    return groups.map((g) => ({ title: g.title, entries: searchEntries(g.entries, q) })).filter((g) => g.entries.length);
-  }
+  // an unknown object has no groups (the note alone). A known scope with a query is one flat list.
   const all = groups.flatMap((g) => g.entries);
   const found = searchEntries(all, q);
   return found.length ? [{ title: null, entries: found }] : [];

@@ -7,7 +7,7 @@
 
 import * as Blockly from "blockly";
 import { NamePanel } from "./panel.js";
-import { isAttributeBlock, isMethodBlock, lookupEntry } from "./call_block.js";
+import { importsOf, isAttributeBlock, isBareCall, isMethodBlock, lookupEntry } from "./call_block.js";
 import { kitFor } from "./kit.js";
 import { staticType } from "./types.js";
 
@@ -66,13 +66,20 @@ export class FieldCatalogueName extends Blockly.FieldTextInput {
 
   openList(document) {
     const block = this.getSourceBlock();
-    if (!isMethodBlock(block)) return;   // a bare call has no object to narrow the list: the text box alone
+    const bare = isBareCall(block);
+    if (!bare && !isMethodBlock(block)) return;
     const { catalogue } = this.context;
-    const tracker = block.workspace.bfTypes;
-    const type = tracker ? tracker.objectType(block) : staticType(block, catalogue);
-    const scope = catalogue.scope(type, { properties: isAttributeBlock(block) });
+    let scope;
+    if (bare) {
+      scope = catalogue.bareScope(importsOf(block, true));   // Python's built-ins and what the sketch imports
+    } else {
+      const tracker = block.workspace.bfTypes;
+      const type = tracker ? tracker.objectType(block) : staticType(block, catalogue);
+      scope = catalogue.scope(type, { properties: isAttributeBlock(block) });
+    }
+    // a bare name has no kit block (the kit blocks write `f.name`), so its rows do not say so
     this.panel = new NamePanel({
-      document, catalogue, scope, name: this.getValue(), kitOf: kitFor, onChoose: (entry) => this.choose(entry),
+      document, catalogue, scope, name: this.getValue(), kitOf: bare ? () => null : kitFor, onChoose: (entry) => this.choose(entry),
     });
     // clearContent() first: since Blockly 13 it makes a new drop-down, so a content div taken before it is a dead one
     Blockly.DropDownDiv.clearContent();

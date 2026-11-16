@@ -38,7 +38,8 @@ function classAt(testCase, workspaceJson) {
     const before = testCase.program.split("\n").slice(0, testCase.line - 1).join("\n");
     const k = before.split(testCase.object + ".").length - 1;
     assert.ok(sites[k], `no \`${testCase.object}.\` found as number ${k} in the blocks`);
-    return sites[k].type;
+    // the table is about funground's classes: an object that is one of Python's own types (BF-D-044) is not one of them
+    return sites[k].type?.kind === "python" ? null : sites[k].type;
   } finally {
     workspace.dispose();
   }

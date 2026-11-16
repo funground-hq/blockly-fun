@@ -5,7 +5,10 @@
 //   - a variable is what its last assignment above held ("above" means earlier in the Python the blocks make);
 //   - `X.name(...)` is what the catalogue says name gives back (`returns`);
 //   - `for item in X`, where X is a list of some class (the catalogue's `element`), makes item that class;
-//   - anything else is unknown (null). Never a guess.
+//   - Python's own types (BF-D-044): a literal (`3`, `3.5`, `"hi"`, `[]`, `{}`), a text, number or list block, and the
+//     result of str(...), int(...), float(...), list(...), dict(...), len(...), range(...), sorted(...) and a few more
+//     (python.json says which) give {kind: "python", name}; its methods are Python's (str.upper, list.append);
+//   - anything else is unknown (null). Never a guess. Later work will look at more than the assignment.
 // The "hint" step (a quoted annotation) is not built in blocks yet.
 //
 // Python code blocks are read as text with the same rule, so `body.nose.x` is understood too.
@@ -13,6 +16,7 @@
 import * as Blockly from "blockly";
 import { PREFIX } from "../blocks/table.js";
 import { KIT_CALLS } from "./kit.js";
+import { importsInWorkspace } from "./imports.js";
 
 const T = (id) => PREFIX + id;
 const VALUE_INPUT = Blockly.ConnectionType.INPUT_VALUE;
@@ -44,6 +48,44 @@ function endOfString(text, start) {
   return text.length;
 }
 
+const INT = /^-?(\d[\d_]*|0[xXoObB][\da-fA-F_]+)$/;
+const FLOAT = /^-?(\d[\d_]*\.[\d_]*|\.\d[\d_]*|\d[\d_]*)([eE][+-]?\d+)?$/;
+
+/** The Python type a whole text is, when it is one literal: "3" int, "3.5" float, `"hi"` str, `[...]` list, `{...}` dict or set. */
+export function literalType(text) {
+  const t = text.trim();
+  if (INT.test(t)) return "int";
+  if (FLOAT.test(t)) return "float";
+  const quoted = /^[rRfFuU]{0,2}/.exec(t)[0];
+  const body = t.slice(quoted.length);
+  if ((body[0] === "\"" || body[0] === "'") && endOfString(body, 0) === body.length - 1 && body.length > 1) return "str";
+  if (t[0] === "[" && closing(t, 0) === t.length - 1) return "list";
+  if (t[0] === "{" && closing(t, 0) === t.length - 1) {
+    const inner = t.slice(1, -1).trim();
+    return inner === "" || inner.startsWith("**") || hasTopLevelColon(inner) ? "dict" : "set";
+  }
+  return null;
+}
+
+/** True if a colon stands outside every bracket and string: `a: b` in a dict, not the one inside `f(x[1:2])`. */
+function hasTopLevelColon(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\"" || ch === "'") i = endOfString(text, i);
+    else if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    else if (ch === ":" && depth === 0) return true;
+  }
+  return false;
+}
+
+// The blocks whose value is a Python type, whatever is inside them
+const BLOCK_RESULT = new Map([
+  ["text", "str"], ["ask", "str"], ["to_str", "str"], ["to_int", "int"], ["to_float", "float"], ["length", "int"],
+  ["round", "int"], ["empty_list", "list"], ["list_of", "list"],
+].map(([id, name]) => [PREFIX + id, name]));
+
 export class TypeWalk {
   constructor(catalogue) {
     this.catalogue = catalogue;
@@ -69,6 +111,22 @@ export class TypeWalk {
   stepProperty(type, name) {
     const entry = this.catalogue.property(type, name);
     return entry ? this.catalogue.typeOfEntry(entry) : null;
+  }
+
+  /** {kind: "python", name} if the catalogue knows methods of that Python type, else null. */
+  pythonType(name) {
+    return name && this.catalogue.pythonClasses.has(name) ? { kind: "python", name } : null;
+  }
+
+  /** What a bare call of a Python built-in gives back (`str(x)`, `len(x)`), unless the program gave the name a value. */
+  callType(name) {
+    const entry = this.env.has(name) ? null : this.catalogue.pythonNames.get(name);
+    return entry ? this.catalogue.typeOfEntry(entry) : null;
+  }
+
+  /** The type of a text that is one chain or one literal: `whole` of scan, else what the literal is. */
+  wholeType(block, text) {
+    return this.scan(block, text).whole ?? this.pythonType(literalType(text));
   }
 
   classOf(name) {
@@ -154,9 +212,12 @@ export class TypeWalk {
         return this.stepProperty(object, b.getFieldValue("NAME"));
       }
       case T("code_value"):
-        return this.scan(b, b.getFieldValue("TEXT")).whole;
+        return this.wholeType(b, b.getFieldValue("TEXT"));
       default: {
         this.inputs(b, []);
+        if (BLOCK_RESULT.has(b.type)) return this.pythonType(BLOCK_RESULT.get(b.type));
+        if (b.type === T("number")) return this.pythonType(literalType(String(b.getFieldValue("NUM") ?? "")));
+        if (b.type === T("call_value")) return this.callType(b.getFieldValue("NAME"));
         // a kit block of a library call (`sound.tone(440, 1)`, `ml.pose(cam)`) gives back what the call does
         const kit = KIT_CALLS.get(b.type);
         return kit && this.catalogue.isLibrary(kit.owner) ? this.step({ kind: "library", name: kit.owner }, kit.name) : null;
@@ -172,7 +233,7 @@ export class TypeWalk {
       const assign = /^\s*([A-Za-z_]\w*)\s*(?::[^=]*)?=(?!=)\s*(.*)$/.exec(line);
       const loop = /^\s*for\s+([A-Za-z_]\w*)\s+in\s+(.*):\s*$/.exec(line);
       const define = /^\s*def\s+\w+\s*\((.*)\)/.exec(line);
-      if (assign) this.env.set(assign[1], this.scan(block, assign[2]).whole);
+      if (assign) this.env.set(assign[1], this.wholeType(block, assign[2]));
       else if (loop) {
         const list = this.scan(block, loop[2]).whole;
         this.env.set(loop[1], list?.kind === "list" ? this.classOf(list.of) : null);
@@ -200,6 +261,7 @@ export class TypeWalk {
       i += first.length;
       let type = this.nameType(first);
       let steps = 0;
+      let head = first;              // the bare name, until a bracket has been read
       for (;;) {
         if (text[i] === "." && IDENT_START.test(text[i + 1] ?? "")) {
           this.sites.push({ block, text: text.slice(start, i), type });
@@ -211,7 +273,8 @@ export class TypeWalk {
         } else if (text[i] === "(" || text[i] === "[") {
           const end = closing(text, i);
           this.scan(block, text.slice(i + 1, end));
-          if (text[i] === "[" || steps === 0) type = null;   // a subscript, or a call of a bare name
+          if (text[i] === "[" || steps === 0) type = text[i] === "(" && head ? this.callType(head) : null;   // a subscript, or a call of a bare name
+          head = null;
           i = end + 1;
         } else break;
       }
@@ -250,6 +313,7 @@ export class TypeTracker {
     this.afterUpdate = afterUpdate;
     this.objects = new Map();
     this.sites = [];
+    this.imports = [];             // the names the sketch imports, for a bare call's list (imports.js)
     this.stale = true;
     this.pending = false;
     this.updates = 0;
@@ -272,6 +336,7 @@ export class TypeTracker {
   /** Works out every object's type now. */
   update() {
     ({ objects: this.objects, sites: this.sites } = analyse(this.workspace, this.catalogue));
+    this.imports = importsInWorkspace(this.workspace);
     this.stale = false;
     this.updates++;
   }

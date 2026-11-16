@@ -13,7 +13,7 @@ import * as Blockly from "blockly";
 import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX } from "./table.js";
 import { createCatalogue } from "../catalogue/index.js";
 import { FieldCatalogueName } from "../catalogue/field.js";
-import { lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
+import { isBareCall, lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
 import { defaultFor } from "../catalogue/slots.js";
 import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
 
@@ -377,7 +377,7 @@ function rebuild(block, def, settings, state, remap = new Map(), strict = false)
  * (BF-6); any other name builds the call's slots (an attribute block has none to build).
  */
 function chooseEntry(block, entry, def, settings) {
-  const kit = kitFor(entry);
+  const kit = isBareCall(block) ? null : kitFor(entry);   // a bare name is not `f.name`: no kit block
   if (kit && kitFits(block, entry, kit)) swapForKit(block, kit);
   else if (block.bfState?.args) adoptSignature(block, def, settings, entry);
 }

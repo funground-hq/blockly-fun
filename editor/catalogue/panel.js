@@ -37,7 +37,7 @@ export class NamePanel {
    * @param document   the page's document
    * @param catalogue  the Catalogue (for reference links)
    * @param scope      catalogue.scope(type): what the list offers
-   * @param name       the name now in the field (an unknown object's classes with this name come first)
+   * @param name       the name now in the field (its row is the one the footer links to)
    * @param kitOf      entry => the kit block of that name, or null: a row with one says "has its own block"
    * @param onChoose   called with the entry a row stands for
    */
@@ -72,7 +72,7 @@ export class NamePanel {
 
   render() {
     const doc = this.document;
-    const groups = searchScope(this.scope, this.query, this.name);
+    const groups = searchScope(this.scope, this.query);
     this.list.replaceChildren();
     this.rows = [];
     this.index = -1;
@@ -94,7 +94,7 @@ export class NamePanel {
         this.rows.push({ entry, element: this.row(entry) });
       }
     }
-    if (!this.rows.length) {
+    if (!this.rows.length && this.scope.known) {
       const empty = doc.createElement("div");
       empty.className = "bf-cat-empty";
       empty.textContent = "No match. The name you typed is used as it is.";

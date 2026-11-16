@@ -78,22 +78,20 @@ test("scopes: f, a library, a class, and an unknown object", () => {
   assert.ok(sliderNames.includes("value") && !sliderNames.includes("high"), "methods, not properties");
   const unknown = catalogue.scope(null);
   assert.equal(unknown.known, false);
-  assert.ok(unknown.groups.length > 20 && unknown.groups.every((g) => g.entries.length));
-  assert.equal(catalogue.scope({ kind: "list", of: "Body" }).known, false, "a list is Python's own");
+  assert.deepEqual(unknown.groups, [], "an unknown object: the note alone, no list of every class's members (BF-D-044)");
+  const list = catalogue.scope({ kind: "list", of: "Body" });
+  assert.ok(list.known && names(list.groups.flatMap((g) => g.entries)).includes("append"), "a list is Python's own: its methods");
 });
 
-test("an unknown object: classes with the typed name come first; a search keeps the classes", () => {
-  const scope = catalogue.scope(null);
-  const first = searchScope(scope, "", "play")[0];
-  assert.ok(first.entries.some((e) => e.name === "play"));
-  const found = searchScope(scope, "play", "");
-  assert.ok(found.every((g) => g.title && g.entries.length));
+test("an unknown object: a search finds nothing to list", () => {
+  assert.deepEqual(searchScope(catalogue.scope(null), ""), []);
+  assert.deepEqual(searchScope(catalogue.scope(null), "play"), []);
 });
 
 test("a known scope is flat when searched, and grouped when the search is empty", () => {
   const scope = catalogue.scope(F);
-  assert.equal(searchScope(scope, "", "").length, scope.groups.length);
-  const flat = searchScope(scope, "circle", "");
+  assert.equal(searchScope(scope, "").length, scope.groups.length);
+  const flat = searchScope(scope, "circle");
   assert.equal(flat.length, 1);
   assert.equal(flat[0].title, null);
   assert.equal(flat[0].entries[0].name, "circle");
@@ -163,11 +161,12 @@ test("the panel: keys move the highlight, a click chooses, a typed exact name is
   assert.equal(panel.rows.length, 0);
 });
 
-test("the panel for an unknown object says so, and groups by class", () => {
+test("the panel for an unknown object says so, and lists nothing", () => {
   const { panel } = panelFor(null, { name: "play" });
   assert.match(panel.element.textContent, /funground doesn't know what this is yet/);
-  assert.ok(panel.element.querySelectorAll(".bf-cat-heading").length > 20);
-  assert.equal(panel.element.querySelector(".bf-cat-heading").textContent === "", false);
+  assert.equal(panel.element.querySelectorAll(".bf-cat-heading").length, 0);
+  assert.equal(panel.rows.length, 0);
+  assert.doesNotMatch(panel.element.textContent, /No match/, "the note alone");
 });
 
 test("the footer links to the reference only when the host gave a helpBase", () => {
