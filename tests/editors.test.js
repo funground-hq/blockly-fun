@@ -97,11 +97,11 @@ test("the swap and its undo: out of the slot is the plain field again, back in i
 test("the events alone move the editors, and a move back (what undo does) brings the first one back", async () => {
   await withEditors(async (workspace) => {
     const rotate = add(workspace, call("rotate", [num("90")]));
-    const circle = add(workspace, call("circle", [num("1"), num("2"), num("3")]));
+    const circle = add(workspace, call("print", [num("1")]));    // no kind: a plain slot
     const number = argBlock(rotate);
     await tick();                          // the editors are worked out in the next frame, with no update() call
     assert.ok(fieldOf(number, "NUM") instanceof FieldAngle);
-    circle.getInput("ARG2").connection.connect(number.outputConnection);   // a pixels slot: no dial
+    circle.getInput("ARG0").connection.connect(number.outputConnection);   // a slot with no kind: no dial
     await tick();
     assert.equal(number.getParent().id, circle.id);
     assert.ok(isPlainNumber(fieldOf(number, "NUM")));
@@ -208,6 +208,92 @@ test("a slider moved as the plugin moves it sets text", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
+// Pixels: a slider as wide as the canvas (BF-D-043)
+
+const range = (field) => [field.getMin(), field.getMax(), field.getPrecision()];
+const sizeCall = (w, h) => call("size", [num(w), num(h)]);
+
+test("pixels: x goes to the canvas width, y to its height, a diameter to the larger", () => {
+  withEditors((workspace, editors) => {
+    add(workspace, sizeCall("640", "400"));
+    const circle = add(workspace, call("circle", [num("10"), num("20"), num("30")]));
+    const rect = add(workspace, call("rect", [num("1"), num("2"), num("3"), num("4")]));
+    editors.update();
+    assert.deepEqual(range(fieldOf(argBlock(circle, 0), "NUM")), [0, 640, 1], "x");
+    assert.deepEqual(range(fieldOf(argBlock(circle, 1), "NUM")), [0, 400, 1], "y");
+    assert.deepEqual(range(fieldOf(argBlock(circle, 2), "NUM")), [0, 640, 1], "diameter");
+    assert.deepEqual(range(fieldOf(argBlock(rect, 2), "NUM")), [0, 640, 1], "width");
+    assert.deepEqual(range(fieldOf(argBlock(rect, 3), "NUM")), [0, 400, 1], "height");
+    assert.equal(fieldOf(argBlock(circle, 0), "NUM").getValue(), "10", "the text is kept");
+  });
+});
+
+test("pixels: the kit blocks (circle D) and a tall canvas: the larger side for a diameter", () => {
+  withEditors((workspace, editors) => {
+    add(workspace, { type: typeOf("canvas_size"), inputs: { W: num("300"), H: num("500") } });
+    const circle = add(workspace, { type: typeOf("circle"), inputs: { X: num("1"), Y: num("2"), D: num("3") } });
+    editors.update();
+    assert.deepEqual(range(fieldOf(circle.getInputTargetBlock("X"), "NUM")), [0, 300, 1]);
+    assert.deepEqual(range(fieldOf(circle.getInputTargetBlock("Y"), "NUM")), [0, 500, 1]);
+    assert.deepEqual(range(fieldOf(circle.getInputTargetBlock("D"), "NUM")), [0, 500, 1]);
+  });
+});
+
+test("pixels: no f.size, or one that is not plain whole numbers, gives 1000", () => {
+  withEditors((workspace, editors) => {
+    const circle = add(workspace, call("circle", [num("10"), num("20"), num("30")]));
+    editors.update();
+    assert.deepEqual(range(fieldOf(argBlock(circle, 0), "NUM")), [0, 1000, 1], "no f.size");
+    add(workspace, call("size", [num("6.5"), variable("h")]));
+    editors.update();
+    assert.deepEqual(range(fieldOf(argBlock(circle, 1), "NUM")), [0, 1000, 1], "not whole numbers");
+  });
+});
+
+test("pixels: a changed f.size makes the sliders again on the next update", () => {
+  withEditors((workspace, editors) => {
+    const size = add(workspace, sizeCall("640", "400"));
+    const circle = add(workspace, call("circle", [num("10"), num("20"), num("30")]));
+    editors.update();
+    const before = fieldOf(argBlock(circle, 0), "NUM");
+    assert.deepEqual(range(before), [0, 640, 1]);
+    argBlock(size, 0).setFieldValue("800", "NUM");
+    editors.update();
+    const after = fieldOf(argBlock(circle, 0), "NUM");
+    assert.notEqual(after, before);
+    assert.deepEqual(range(after), [0, 800, 1]);
+    assert.equal(after.getValue(), "10");
+  });
+});
+
+test("pixels: a number outside the canvas, or with a fraction, keeps the plain field", () => {
+  withEditors((workspace, editors) => {
+    add(workspace, sizeCall("640", "400"));
+    const circle = add(workspace, call("circle", [num("700"), num("401"), num("2.5")]));
+    const inside = add(workspace, call("circle", [num("640"), num("400"), num("0")]));
+    editors.update();
+    for (let i = 0; i < 3; i++) assert.ok(isPlainNumber(fieldOf(argBlock(circle, i), "NUM")), `slot ${i}`);
+    assert.equal(fieldOf(argBlock(circle, 0), "NUM").getValue(), "700");
+    for (let i = 0; i < 3; i++) assert.ok(fieldOf(argBlock(inside, i), "NUM") instanceof FieldSlider, `edges ${i}`);
+  });
+});
+
+test("pixels: f.size's own slots go to 4000, whatever they hold", () => {
+  withEditors((workspace, editors) => {
+    const general = add(workspace, sizeCall("640", "400"));
+    const kit = add(workspace, { type: typeOf("canvas_size"), inputs: { W: num("3000"), H: num("20") } });
+    editors.update();
+    assert.deepEqual(range(fieldOf(argBlock(general, 0), "NUM")), [0, 4000, 1]);
+    assert.deepEqual(range(fieldOf(argBlock(general, 1), "NUM")), [0, 4000, 1]);
+    assert.deepEqual(range(fieldOf(kit.getInputTargetBlock("W"), "NUM")), [0, 4000, 1]);
+    assert.deepEqual(range(fieldOf(kit.getInputTargetBlock("H"), "NUM")), [0, 4000, 1]);
+    argBlock(general, 0).setFieldValue("700", "NUM");
+    editors.update();
+    assert.deepEqual(range(fieldOf(argBlock(general, 0), "NUM")), [0, 4000, 1], "does not chase itself");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
 // Colours: a grid of names
 
 test("a text in a colour slot gets the grid of colour names, and its value is the text", () => {
@@ -298,7 +384,7 @@ test("the drawing blocks' colour slots get the grid; their message and numbers d
       assert.ok(fieldOf(block.getInputTargetBlock("COLOR"), "TEXT") instanceof ColourNameField, block.type);
     }
     assert.ok(!(fieldOf(write.getInputTargetBlock("TEXT"), "TEXT") instanceof ColourNameField));
-    assert.ok(isPlainNumber(fieldOf(circle.getInputTargetBlock("D"), "NUM")));
+    assert.ok(fieldOf(circle.getInputTargetBlock("D"), "NUM") instanceof FieldSlider, "pixels: a slider, not a dial or a grid");
   });
 });
 
@@ -312,7 +398,7 @@ test("changing the name of a call changes the editors of its slots", () => {
     assert.ok(fieldOf(argBlock(block), "NUM") instanceof FieldAngle);
     block.getField("NAME").setValue("circle");
     editors.update();
-    assert.ok(isPlainNumber(fieldOf(argBlock(block), "NUM")), "circle's first slot is pixels");
+    assert.ok(fieldOf(argBlock(block), "NUM") instanceof FieldSlider, "circle's first slot is pixels: a slider, no dial");
     block.getField("NAME").setValue("shear_x");
     editors.update();
     assert.ok(fieldOf(argBlock(block), "NUM") instanceof FieldAngle, "shear_x is degrees too");
@@ -371,6 +457,7 @@ test("the Python code block takes several lines; its text, JSON and Python are a
 test("with the editors on, JSON and Python are those of the plain blocks", () => {
   const program = [
     call("rotate", [num("45")]), call("rotate", [num("-30")]), call("opacity", [num("128")]),
+    call("circle", [num("100"), num("200"), num("50")]), call("size", [num("640"), num("400")]),
     call("lerp_color", [text("red"), text("#ff6347"), num("0.5")]), call("fill", [text("tomato")]),
     { type: typeOf("fill"), inputs: { COLOR: text("mycolour") } }, { type: typeOf("code"), fields: { TEXT: "a = 1\nb = 2" } },
   ];
@@ -387,7 +474,7 @@ test("with the editors on, JSON and Python are those of the plain blocks", () =>
   withEditors((workspace, tracker) => {
     for (const json of program) add(workspace, json);
     tracker.update();
-    assert.ok(tracker.swaps >= 6, `swaps: ${tracker.swaps}`);
+    assert.ok(tracker.swaps >= 12, `swaps: ${tracker.swaps}`);
   });
 });
 

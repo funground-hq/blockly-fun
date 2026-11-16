@@ -1,6 +1,6 @@
 // Editors for slots (Funground_Calls_Note.md, section 6; BF-D-002, BF-D-029).
 //
-// A number block in a degrees slot takes a dial, in a range slot a slider; a text block in a colour slot takes a grid
+// A number block in a degrees slot takes a dial, in a range slot a slider, in a pixels slot a slider from 0 to the canvas size (the first f.size, else 1000; BF-D-043); a text block in a colour slot takes a grid
 // of colour names; the Python code block takes several lines. These are the same blocks with another field in the same
 // place: no new block types, no new Python, the same saved JSON and the same value. Only a host that gave a catalogue
 // gets them (the catalogue says what a slot is), so without one nothing here runs.
