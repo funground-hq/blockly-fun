@@ -182,3 +182,11 @@ test("the footer links to the reference only when the host gave a helpBase", () 
   without.move(1);
   assert.equal(without.element.querySelector(".bf-cat-footer a"), null);
 });
+
+test("a helpBase function writes the reference's address itself (a host whose pages are folders)", () => {
+  const site = (url) => "https://example.org/" + url.replace(/\.md(#|$)/, "/$1");
+  const panel = panelFor(F, { helpBase: site }).panel;
+  panel.setQuery("circle");
+  panel.move(1);
+  assert.equal(panel.element.querySelector(".bf-cat-footer a").href, "https://example.org/reference/API/#fn-circle");
+});

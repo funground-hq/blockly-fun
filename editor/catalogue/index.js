@@ -154,9 +154,13 @@ export class Catalogue {
     return { known: true, groups: [...groups].map(([title, list]) => ({ title, entries: list })) };
   }
 
-  /** The reference entry's address: the catalogue's url (relative) against the host's helpBase, or null. */
+  /**
+   * The reference entry's address, or null. `helpBase` is an address the catalogue's relative url is read against, or a
+   * function url -> address for a host that publishes the pages under other paths (MkDocs turns API.md into API/).
+   */
   helpUrl(entry) {
     if (!this.helpBase || !entry?.url) return null;
+    if (typeof this.helpBase === "function") return this.helpBase(entry.url) ?? null;
     try { return new URL(entry.url, this.helpBase).href; } catch (error) { return null; }
   }
 }

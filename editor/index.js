@@ -11,7 +11,7 @@
 // without it, fromPython says so.
 //
 // `catalogue` is funground's catalogue (completions.json, parsed) and `helpBase` the address its relative `url`s are
-// read against. With a catalogue the two general call blocks get a searchable name list, labelled slots, a tooltip and
+// read against, or a function url -> address. With a catalogue the two general call blocks get a searchable name list, labelled slots, a tooltip and
 // Help (Funground_Calls_Note.md), and a number or colour slot gets a dial, a slider or a grid of colours (editor/editors/);
 // without a catalogue the editor is exactly what it was. blockly-fun never fetches it.
 
