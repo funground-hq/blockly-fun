@@ -5,6 +5,7 @@
 //   editor.toPython();                                      // the program's text
 //   await editor.fromPython(source);                        // {ok, raw, tidied} or {ok: false, line, message}
 //   editor.settings({ words: "python", pythonLine: false }); // redraws the blocks; the Python stays the same
+//   editor.layout("phone");                                  // the kinds of blocks as a row at the bottom (BF-D-049); "wide" is the column
 //   toPython(workspaceJson);                                 // the same, with no page (tests, tools)
 //
 // `convert(source)` is how the editor reaches Python (python_bridge.js: blockly_fun.convert in funground-web's runner);
@@ -14,6 +15,11 @@
 // read against, or a function url -> address. With a catalogue the two general call blocks get a searchable name list, labelled slots, a tooltip and
 // Help (Funground_Calls_Note.md), and a number or colour slot gets a dial, a slider or a grid of colours (editor/editors/);
 // without a catalogue the editor is exactly what it was. blockly-fun never fetches it.
+//
+// `layout` is "wide" (the default: the kinds of blocks are a column of icons on the left) or "phone" (a row along the
+// bottom, within reach of a thumb, and bigger touch targets). The host decides from the screen: BF-D-049 says a phone is a
+// screen whose narrow side is under 600 CSS px (`isPhoneScreen()` below asks). `editor.layout(next)` changes it on an open
+// editor: the program is saved and loaded again, so it is kept; the undo history is not (it belongs to the old workspace).
 
 import * as Blockly from "blockly";
 import {
@@ -24,6 +30,21 @@ import { createCatalogue } from "./catalogue/index.js";
 import { TypeTracker } from "./catalogue/types.js";
 import { refreshCall } from "./catalogue/call_block.js";
 import { EditorTracker } from "./editors/index.js";
+
+export const LAYOUTS = ["wide", "phone"];
+
+/** The screen size rule of BF-D-049: a phone is a screen whose narrow side is under 600 CSS px. */
+export function isPhoneScreen(width, height) {
+  return Math.min(width, height) < 600;
+}
+
+/** The options of Blockly.inject that depend on the layout. */
+export function layoutOptions(layout) {
+  if (!LAYOUTS.includes(layout)) throw new Error(`layout must be "wide" or "phone", not ${layout}`);
+  if (layout === "wide") return {};
+  // "end" with a horizontal layout is Blockly's bottom toolbox; its flyout is a row of blocks above it. pinch zooms by touch.
+  return { toolboxPosition: "end", horizontalLayout: true, zoom: { controls: true, wheel: true, startScale: 0.9, pinch: true } };
+}
 
 function ensureRegistered() {
   if (!registeredSettings()) registerBlocks();
@@ -61,8 +82,9 @@ export function tidiedLines(before, after) {
  * `media` is the folder of Blockly's icons and sounds (node_modules/blockly/media/, or dist/media/ beside the bundle).
  */
 export function createBlocksEditor({
-  element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null, media, catalogue = null, helpBase = null,
+  element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null, media, catalogue = null, helpBase = null, layout = "wide",
 }) {
+  layoutOptions(layout);               // refuses a name that is not a layout, before anything is drawn
   let settings = { words, pythonLine };
   let workspace = null;
   const index = catalogue ? createCatalogue(catalogue, { helpBase }) : null;
@@ -90,7 +112,9 @@ export function createBlocksEditor({
       trashcan: true,
       zoom: { controls: true, wheel: true, startScale: 0.9 },
       move: { scrollbars: true, drag: true, wheel: true },
+      ...layoutOptions(layout),
     });
+    workspace.getInjectionDiv().classList.toggle("bf-phone", layout === "phone");   // the style hangs on this
     workspace.registerToolboxCategoryCallback(OWN_CATEGORY, (ws) => [...ownStaticBlocks(), ...ownBlocks(ws)]);
     // the type rule (section 4): worked out again on change events, at most once per frame
     if (index) workspace.bfTypes = new TypeTracker(workspace, index, () => refreshCalls());
@@ -135,6 +159,20 @@ export function createBlocksEditor({
       const text = generator.workspaceToCode(workspace);
       onChange(text);
       return { ok: true, raw: result.raw, tidied: tidiedLines(source, text) };
+    },
+    /**
+     * The layout ("wide" or "phone"); with a name, changes it. The program is saved and loaded into a new workspace, so it
+     * stays and the Python does not change. The undo history does not: it goes with the old workspace.
+     */
+    layout(next) {
+      if (next === undefined) return layout;
+      layoutOptions(next);
+      if (next === layout) return layout;
+      const json = Blockly.serialization.workspaces.save(workspace);
+      layout = next;
+      workspace.dispose();
+      open(json);
+      return layout;
     },
     /** Changes what blocks show. The program is saved, the blocks are drawn again, the Python does not change. */
     settings(next) {

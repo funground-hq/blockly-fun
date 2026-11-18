@@ -9,6 +9,6 @@ import * as English from "blockly/msg/en";
 
 Blockly.setLocale(English);
 
-export { createBlocksEditor, toPython, tidiedLines } from "./index.js";
+export { createBlocksEditor, toPython, tidiedLines, isPhoneScreen, LAYOUTS } from "./index.js";
 export { CONVERTER_FILES, fetchConverter, runnerConverter } from "./python_bridge.js";
 export const BLOCKLY_VERSION = Blockly.VERSION;

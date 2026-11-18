@@ -1,4 +1,4 @@
-// The toolbox as a column of icons (BF-D-041). Each category shows one small picture in its own colour; its name is the
+// The toolbox as a column of icons (BF-D-041), or on a phone a row of them (BF-15, BF-D-049). Each category shows one small picture in its own colour; its name is the
 // tooltip (title) and the accessible name (aria-label). There is no text label.
 //
 // How: a subclass of Blockly's own ToolboxCategory, registered in its place (the supported way to customise a category,
@@ -76,11 +76,18 @@ export class IconCategory extends Blockly.ToolboxCategory {
 
 // Blockly's names: the container holds a row (blocklyToolboxCategory) that holds the icon.
 const CSS = `
-.injectionDiv .blocklyToolbox { width: 46px; }
+.injectionDiv:not(.bf-phone) .blocklyToolbox { width: 46px; }
 .injectionDiv .blocklyToolboxCategory { display: flex; align-items: center; justify-content: center; height: 40px; margin: 0; padding: 0; }
 .injectionDiv .blocklyTreeRowContentContainer { display: flex; }
 .injectionDiv .bf-kit-icon { display: flex; color: var(--bf-kit); }
 .injectionDiv .blocklyToolboxSelected .bf-kit-icon { color: #fff; }
+/* The phone layout (BF-15): one row along the bottom. Each kind is 44 px square, a finger's size; the row scrolls sideways
+   by touch, and the half icon at its edge shows that there are more. */
+.injectionDiv.bf-phone .blocklyToolbox { overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; }
+.injectionDiv.bf-phone .blocklyToolbox::-webkit-scrollbar { display: none; }
+.injectionDiv.bf-phone .blocklyToolboxCategoryGroup { flex-wrap: nowrap; }
+.injectionDiv.bf-phone .blocklyToolboxCategoryContainer { flex: none; margin: 0; }
+.injectionDiv.bf-phone .blocklyToolboxCategory { width: 44px; height: 44px; }
 `;
 
 let done = false;
