@@ -5,6 +5,11 @@
 //   editor.toPython();                                      // the program's text
 //   await editor.fromPython(source);                        // {ok, raw, tidied} or {ok: false, line, message}
 //   editor.settings({ words: "python", pythonLine: false }); // redraws the blocks; the Python stays the same
+//   editor.layout("phone");                                  // the kinds of blocks as a row at the bottom (BF-D-049); "wide" is the column
+//   editor.undo(); editor.redo();                            // take back, and do again; true if there was something to do
+//   editor.canUndo(); editor.canRedo();                      // for the host's two buttons; onHistory() says when to ask again
+//   editor.picked();                                         // phone layout: what is picked, {count, single}, or null
+//   editor.mode(); editor.mode("values");                    // phone layout: what a touch does: "read" (the start), "values", "add", "move"; wide: null
 //   toPython(workspaceJson);                                 // the same, with no page (tests, tools)
 //
 // `convert(source)` is how the editor reaches Python (python_bridge.js: blockly_fun.convert in funground-web's runner);
@@ -14,6 +19,17 @@
 // read against, or a function url -> address. With a catalogue the two general call blocks get a searchable name list, labelled slots, a tooltip and
 // Help (Funground_Calls_Note.md), and a number or colour slot gets a dial, a slider or a grid of colours (editor/editors/);
 // without a catalogue the editor is exactly what it was. blockly-fun never fetches it.
+//
+// `layout` is "wide" (the default: the kinds of blocks are a column of icons on the left) or "phone" (a row along the
+// bottom, within reach of a thumb, and bigger touch targets). The host decides from the screen: BF-D-049 says a phone is a
+// screen whose narrow side is under 600 CSS px (`isPhoneScreen()` below asks). `editor.layout(next)` changes it on an open
+// editor: the program is saved and loaded again, so it is kept; the undo history is not (it belongs to the old workspace).
+//
+// Both layouts have a first item in the toolbox, "Find a block" (find.js), and undo and redo, Python code blocks that fold
+// (fold.js) and the stacks always in one column (column.js; BF-D-051). The phone layout also has four modes (modes.js) and a
+// foot bar with the mode, zoom and Reset (foot.js), pick-then-move, an action bar and adding a block by a tap (pick.js,
+// add.js, dock.js; BF-D-050), and Blockly's own zoom buttons and bin are not drawn. The editor starts in "read" and keeps
+// its mode when it is drawn again (layout(), settings()); a host that shows the blocks again can say editor.mode("read").
 
 import * as Blockly from "blockly";
 import {
@@ -24,6 +40,36 @@ import { createCatalogue } from "./catalogue/index.js";
 import { TypeTracker } from "./catalogue/types.js";
 import { refreshCall } from "./catalogue/call_block.js";
 import { EditorTracker } from "./editors/index.js";
+import { attach } from "./attach.js";
+import { addFootStyle } from "./foot.js";
+import { FIRST_MODE, modeOf } from "./modes.js";
+
+export const LAYOUTS = ["wide", "phone"];
+
+/** The screen size rule of BF-D-049: a phone is a screen whose narrow side is under 600 CSS px. */
+export function isPhoneScreen(width, height) {
+  return Math.min(width, height) < 600;
+}
+
+/**
+ * The blocks' starting size on a phone. Blockly's text is 12 pt (16 px) at scale 1, and the mock-up's blocks are 12.5 px, so
+ * the scale is 12.5 / 16. Reset goes back to it.
+ */
+export const PHONE_SCALE = 0.78;
+
+/** The options of Blockly.inject that depend on the layout. */
+export function layoutOptions(layout) {
+  if (!LAYOUTS.includes(layout)) throw new Error(`layout must be "wide" or "phone", not ${layout}`);
+  if (layout === "wide") return {};
+  // "end" with a horizontal layout is Blockly's bottom toolbox; its flyout is a row of blocks above it. Pinch zooms by touch.
+  // Blockly's zoom buttons and bin are not drawn: the foot bar zooms and resets, and Delete is in Move mode (BF-D-051).
+  return {
+    toolboxPosition: "end", horizontalLayout: true, trashcan: false, enableContextMenu: false,
+    // Blockly pans by drag only when it has scrollbars (no scrollbars turns drag and wheel off), so they stay; the phone's style
+    // (toolbox_icons.js) makes them thin and faint, and lets every touch through to the blocks
+    zoom: { controls: false, wheel: true, startScale: PHONE_SCALE, pinch: true },
+  };
+}
 
 function ensureRegistered() {
   if (!registeredSettings()) registerBlocks();
@@ -61,10 +107,14 @@ export function tidiedLines(before, after) {
  * `media` is the folder of Blockly's icons and sounds (node_modules/blockly/media/, or dist/media/ beside the bundle).
  */
 export function createBlocksEditor({
-  element, words = "scratch", pythonLine = true, onChange = () => {}, convert = null, media, catalogue = null, helpBase = null,
+  element, words = "scratch", pythonLine = true, onChange = () => {}, onHistory = () => {}, onMode = () => {}, convert = null, media,
+  catalogue = null, helpBase = null, layout = "wide",
 }) {
+  layoutOptions(layout);               // refuses a name that is not a layout, before anything is drawn
   let settings = { words, pythonLine };
   let workspace = null;
+  let touch = null;                    // the search box, the column, and on a phone the picking and the foot (attach.js)
+  let mode = FIRST_MODE;               // the phone's mode (modes.js); kept when the workspace is made again
   const index = catalogue ? createCatalogue(catalogue, { helpBase }) : null;
 
   /** Works the types of objects out again, and brings the call blocks' labels up to date (after a load). */
@@ -78,19 +128,43 @@ export function createBlocksEditor({
   const changed = (event) => {
     if (event.isUiEvent) return;
     onChange(generator.workspaceToCode(workspace));
+    onHistory();
+  };
+
+  /** A program that was just put in is the start, not a step: there is nothing to undo, and nothing waiting to be. */
+  const startHere = () => {
+    workspace.clearUndo();
+    onHistory();
   };
 
   function open(json) {
     registerBlocks({ ...settings, catalogue: index });
     element.replaceChildren();
-    workspace = Blockly.inject(element, {
+    // On a phone the blocks have a foot bar under them: the frame holds the stage (Blockly) and the bar, one above the other.
+    const phone = layout === "phone";
+    let frame = null;
+    let stage = element;
+    if (phone) {
+      addFootStyle();
+      frame = document.createElement("div");
+      frame.className = "bf-frame";
+      stage = document.createElement("div");
+      stage.className = "bf-stage";
+      frame.append(stage);
+      element.append(frame);
+    }
+    workspace = Blockly.inject(stage, {
       toolbox: toolbox(),
       ...(media ? { media } : {}),
       renderer: "zelos",
       trashcan: true,
       zoom: { controls: true, wheel: true, startScale: 0.9 },
       move: { scrollbars: true, drag: true, wheel: true },
+      ...layoutOptions(layout),
     });
+    workspace.getInjectionDiv().classList.toggle("bf-phone", layout === "phone");   // the style hangs on this
+    // a finger is not a mouse: a touch that wanders 10 px is still a tap, so a tap is not read as the start of a drag
+    Blockly.config.dragRadius = layout === "phone" ? 10 : 5;
     workspace.registerToolboxCategoryCallback(OWN_CATEGORY, (ws) => [...ownStaticBlocks(), ...ownBlocks(ws)]);
     // the type rule (section 4): worked out again on change events, at most once per frame
     if (index) workspace.bfTypes = new TypeTracker(workspace, index, () => refreshCalls());
@@ -100,9 +174,17 @@ export function createBlocksEditor({
     refreshCalls();
     watchLines(workspace);
     forgetOrderOnEdit(workspace);
+    touch = attach(workspace, { layout, frame, stage, mode, onMode: (id) => { mode = id; onMode(id); } });
     workspace.addChangeListener(changed);
     onChange(generator.workspaceToCode(workspace));
+    startHere();
   }
+
+  const close = () => {
+    touch?.dispose();
+    touch = null;
+    workspace.dispose();
+  };
 
   open(null);
 
@@ -112,14 +194,50 @@ export function createBlocksEditor({
     },
     toPython: () => generator.workspaceToCode(workspace),
     /** Measures the page again: call it after the editor's element is shown or changes size. */
-    resize: () => Blockly.svgResize(workspace),
+    resize: () => {
+      Blockly.svgResize(workspace);
+      touch?.dock.place();
+    },
     /** The program as Blockly JSON, to keep. */
     save: () => Blockly.serialization.workspaces.save(workspace),
     /** Replaces the program with this JSON. */
     load(json) {
       Blockly.serialization.workspaces.load(json, workspace);
       refreshCalls();
+      touch.picker?.clear();
+      touch.column.schedule();
       onChange(generator.workspaceToCode(workspace));
+      startHere();
+    },
+    /** Takes back the last step (a move, an add, a delete, a value changed: one action is one step). True if there was one. */
+    undo() {
+      const had = workspace.getUndoStack().length > 0;
+      workspace.undo(false);
+      return had;
+    },
+    /** Does again what undo took back. True if there was something to do. */
+    redo() {
+      const had = workspace.getRedoStack().length > 0;
+      workspace.undo(true);
+      return had;
+    },
+    canUndo: () => workspace.getUndoStack().length > 0,
+    canRedo: () => workspace.getRedoStack().length > 0,
+    /** Phone layout: what is picked, {count, single}, or null (nothing is picked, or the layout is wide). */
+    picked() {
+      const info = touch?.picker?.info();
+      return info ? { count: info.count, single: info.single } : null;
+    },
+    /**
+     * Phone layout: what a touch on the blocks does, "read", "values", "add" or "move". With a name, changes it (an unknown name
+     * is an error). Gives null in the wide layout, which has no modes.
+     */
+    mode(next) {
+      if (layout !== "phone") return null;
+      if (next === undefined) return touch.modes.id;
+      modeOf(next);
+      touch.modes.set(next);
+      return touch.modes.id;
     },
     /**
      * Replaces the program with the blocks `source` becomes (Architecture section 4, "Switch to blocks"). Text that does
@@ -130,18 +248,34 @@ export function createBlocksEditor({
       const result = await convert(source);
       if (!result.ok) return result;
       Blockly.serialization.workspaces.load(result.workspace, workspace);
-      workspace.cleanUp();               // the converter's positions give the order; Blockly stacks them by drawn height
       refreshCalls();
+      touch.picker?.clear();
+      await touch.column.settle();       // the converter's positions give the order; the column stacks them by drawn height
       const text = generator.workspaceToCode(workspace);
       onChange(text);
+      startHere();
       return { ok: true, raw: result.raw, tidied: tidiedLines(source, text) };
+    },
+    /**
+     * The layout ("wide" or "phone"); with a name, changes it. The program is saved and loaded into a new workspace, so it
+     * stays and the Python does not change. The undo history does not: it goes with the old workspace.
+     */
+    layout(next) {
+      if (next === undefined) return layout;
+      layoutOptions(next);
+      if (next === layout) return layout;
+      const json = Blockly.serialization.workspaces.save(workspace);
+      layout = next;
+      close();
+      open(json);
+      return layout;
     },
     /** Changes what blocks show. The program is saved, the blocks are drawn again, the Python does not change. */
     settings(next) {
       if (next === undefined) return { ...settings };
       const json = Blockly.serialization.workspaces.save(workspace);
       settings = { ...settings, ...next };
-      workspace.dispose();
+      close();
       open(json);
       return { ...settings };
     },

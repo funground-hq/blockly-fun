@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as Blockly from "blockly";
 
-import { registerBlocks, toolbox, typeOf } from "../editor/blocks/register.js";
+import { registerBlocks, toolbox, typeOf, SEARCH_CATEGORY } from "../editor/blocks/register.js";
 import { BLOCKS, CATEGORIES, categoryColour } from "../editor/blocks/table.js";
 import { ICONS, IconCategory } from "../editor/blocks/toolbox_icons.js";
 import { createCatalogue } from "../editor/catalogue/index.js";
@@ -109,14 +109,18 @@ test("every section of the catalogue is mapped, except the four left to the grey
 // The toolbox
 
 test("the toolbox gives each category its icon and its name, and the icon class is Blockly's category", () => {
-  const categories = toolbox().contents;
+  // the first item is "Find a block" (BF-D-050); after it come the categories of the table, in its order
+  const [search, ...categories] = toolbox().contents;
+  assert.equal(search.custom, SEARCH_CATEGORY);
+  assert.equal(search.name, "Find a block");
+  assert.equal(search.contents, undefined, "its blocks are the ones that match what is typed (find.js)");
   assert.equal(categories.length, CATEGORIES.length);
-  for (const cat of categories) {
+  for (const cat of [search, ...categories]) {
     assert.ok(ICONS[cat.icon], `${cat.name} has an icon`);
     assert.match(cat.colour, /^#[0-9A-F]{6}$/);
   }
-  assert.equal(new Set(categories.map((c) => c.icon)).size, categories.length, "one icon each");
-  assert.equal(Object.keys(ICONS).length, categories.length, "no icon unused");
+  assert.equal(new Set([search, ...categories].map((c) => c.icon)).size, categories.length + 1, "one icon each");
+  assert.equal(Object.keys(ICONS).length, categories.length + 1, "no icon unused");
   assert.ok(IconCategory.prototype instanceof Blockly.ToolboxCategory);
   registerBlocks({});
   assert.equal(Blockly.registry.getClass(Blockly.registry.Type.TOOLBOX_ITEM, Blockly.ToolboxCategory.registrationName), IconCategory);
