@@ -27,6 +27,7 @@ export const ICONS = {
   cam: '<rect x="3" y="7" width="18" height="12" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 7l2-3h4l2 3"/>',
   call: '<path d="M6 12h9M12 8l4 4-4 4"/><path d="M18 5v14"/>',
   code: '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',
 };
 
 /** The svg element of an icon; it draws in the text colour of its parent (currentColor). */

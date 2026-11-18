@@ -753,14 +753,19 @@ export function ownBlocks(workspace) {
   ]);
 }
 
-/** A toolbox with every block, by category. "Your own blocks" is filled by the editor (see OWN_CATEGORY). */
+// "Find a block" is the first item of the toolbox: a custom category whose flyout is the blocks that match what is typed
+// (find.js registers the callback under this name).
+export const SEARCH_CATEGORY = "BF_SEARCH";
+const SEARCH = { kind: "category", name: "Find a block", colour: "#607D8B", icon: "search", custom: SEARCH_CATEGORY };
+
+/** A toolbox with a search first, then every block by category. "Your own blocks" is filled by the editor (see OWN_CATEGORY). */
 export function toolbox() {
   return {
     kind: "categoryToolbox",
-    contents: CATEGORIES.map((cat) => {
+    contents: [SEARCH, ...CATEGORIES.map((cat) => {
       const head = { kind: "category", name: cat.name, colour: cat.colour, icon: cat.icon };
       if (cat.id === "functions") return { ...head, custom: OWN_CATEGORY };
       return { ...head, contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => entry(b.type)) };
-    }),
+    })],
   };
 }

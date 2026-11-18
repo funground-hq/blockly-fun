@@ -8,7 +8,12 @@
 //   2. on the phone the toolbox is a row along the bottom, one icon per kind, each with a name, and fits the screen;
 //   3. a tap opens a flyout above the row; the zoom controls and the trashcan are not under the row;
 //   4. a touch drag takes a block out of the flyout into the work area;
-//   5. the page does not scroll sideways.
+//   5. the page does not scroll sideways;
+//   6. pick, then move, adding by a tap, find a block and undo (BF-D-050; tools/pick_checks.mjs): a drag on an unpicked block
+//      scrolls and does not move it; a tap picks the stack and the action bar shows; a tap again picks one; a drag moves
+//      only what is picked; a tap on a value edits it; Delete then undo brings the blocks back; a search finds blocks and a
+//      tap adds one under the picked block or into its first empty slot; a program just loaded has nothing to undo; and the
+//      wide layout still drags a block with a mouse and has the search at the top of its column.
 // No network is needed. Environment: BF_PYTHON (python.exe, for tools/serve.py), BF_CHROME (chrome.exe).
 
 import { spawn } from "node:child_process";
@@ -16,6 +21,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pickChecks, wideChecks } from "./pick_checks.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PYTHON = process.env.BF_PYTHON || "C:\\Projects\\playground\\.venv\\Scripts\\python.exe";
@@ -117,7 +123,8 @@ async function main() {
     })()`);
     report.controls = controls;
     for (const c of controls) if (c.bottom === undefined || c.bottom > c.top + 1) report.problems.push(`${c.n} is under the row: ` + JSON.stringify(c));
-    const first = await evaluate(`(() => { const r = document.querySelector(".blocklyToolboxCategoryContainer").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+    // the first item is the search (its flyout is a hint, no blocks), so the second is the first kind of blocks
+    const first = await evaluate(`(() => { const r = document.querySelectorAll(".blocklyToolboxCategoryContainer")[1].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
     await tap(first[0], first[1]);
     const flyout = await evaluate(`(() => {
       const f = window.bfEditor.workspace.getFlyout();
@@ -151,6 +158,9 @@ async function main() {
     report.scroll = scroll;
     if (scroll.doc > scroll.inner || scroll.body > scroll.inner) report.problems.push("the page scrolls sideways: " + JSON.stringify(scroll));
 
+    // 6. pick, then move; adding by a tap; find a block; undo
+    await pickChecks({ evaluate, touch, tap, shoot, report, sleep, cdp });
+
     // 1 again. a switch keeps the program; the wide layout is a column on the left
     const kept = await evaluate(`(() => {
       const editor = window.bfEditor;
@@ -168,6 +178,7 @@ async function main() {
     await open("", 1000, 700, false);
     report.desktop = await evaluate("window.bfEditor.layout()");
     if (report.desktop !== "wide") report.problems.push("a 1000 x 700 screen did not get the wide layout: " + report.desktop);
+    await wideChecks({ evaluate, cdp, shoot, report, sleep });
   } catch (error) {
     report.problems.push(String(error.stack ?? error));
   } finally {
