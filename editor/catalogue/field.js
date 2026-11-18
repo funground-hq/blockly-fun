@@ -10,8 +10,9 @@ import { NamePanel } from "./panel.js";
 import { importsOf, isAttributeBlock, isBareCall, isMethodBlock, lookupEntry } from "./call_block.js";
 import { kitFor } from "./kit.js";
 import { staticType } from "./types.js";
+import { writesOnFinish } from "../blocks/finish.js";
 
-export class FieldCatalogueName extends Blockly.FieldTextInput {
+export class FieldCatalogueName extends writesOnFinish(Blockly.FieldTextInput) {
   /**
    * @param defaultName  the name to start with
    * @param validator    the Python-name check of the other name fields

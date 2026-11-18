@@ -10,12 +10,14 @@
 // JSON and Python are exactly what they are without it. (Choosing a name that has a kit block puts that block in: BF-6.)
 
 import * as Blockly from "blockly";
-import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX } from "./table.js";
+import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX, categoryColour } from "./table.js";
+import { registerIconToolbox } from "./toolbox_icons.js";
 import { createCatalogue } from "../catalogue/index.js";
 import { FieldCatalogueName } from "../catalogue/field.js";
 import { isBareCall, lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
 import { defaultFor } from "../catalogue/slots.js";
 import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
+import { FieldText } from "./finish.js";
 
 export { PREFIX };
 export const typeOf = (id) => PREFIX + id;
@@ -199,13 +201,13 @@ function makeField(spec, rows) {
           onChoose: (block, entry) => chooseEntry(block, entry, rows.def, settings),
         });
       }
-      return new Blockly.FieldTextInput(spec.default, nameValidator);
-    case "number": return new Blockly.FieldTextInput(spec.default, numberValidator);
+      return new FieldText(spec.default, nameValidator);
+    case "number": return new FieldText(spec.default, numberValidator);
     case "label": return new Blockly.FieldLabelSerializable(spec.default);
-    case "params": return new Blockly.FieldTextInput(spec.default, paramsValidator);
+    case "params": return new FieldText(spec.default, paramsValidator);
     case "dropdown":
       return new Blockly.FieldDropdown(spec.options.map((o) => [o[words], o.value]));
-    default: return new Blockly.FieldTextInput(spec.default); // text, code
+    default: return new FieldText(spec.default); // text, code
   }
 }
 
@@ -319,7 +321,7 @@ function layout(block, def, settings, state) {
       const label = rows.text(plain);
       if (labelled && label) block.bfSlotLabels[i] = { field: label, plain, positional: kind === "p" };
       if (kind === "k") {
-        rows.pending.push([new Blockly.FieldTextInput("key", nameValidator), "KW" + i]);
+        rows.pending.push([new FieldText("key", nameValidator), "KW" + i]);
         rows.text("=");
       }
       rows.value("ARG" + i);
@@ -595,7 +597,7 @@ function initialState(def) {
 }
 
 function hueOf(def) {
-  return CATEGORIES.find((c) => c.id === def.cat).colour;
+  return categoryColour(def.cat);
 }
 
 function definition(def, settings) {
@@ -686,6 +688,7 @@ let registeredAs = null;
 export function registerBlocks({ words = "scratch", pythonLine = true, catalogue = null, helpBase = null } = {}) {
   if (words !== "scratch" && words !== "python") throw new Error(`words must be "scratch" or "python", not ${words}`);
   injectStyle();
+  registerIconToolbox();
   registerMutatorBlocks();
   // With Python words there is never a Python line, whatever was asked for
   const settings = { words, pythonLine: words === "scratch" && !!pythonLine };
@@ -755,7 +758,7 @@ export function toolbox() {
   return {
     kind: "categoryToolbox",
     contents: CATEGORIES.map((cat) => {
-      const head = { kind: "category", name: cat.name, colour: cat.colour };
+      const head = { kind: "category", name: cat.name, colour: cat.colour, icon: cat.icon };
       if (cat.id === "functions") return { ...head, custom: OWN_CATEGORY };
       return { ...head, contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => entry(b.type)) };
     }),
