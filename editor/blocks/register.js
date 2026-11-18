@@ -18,6 +18,7 @@ import { isBareCall, lookupEntry, refreshCall, tooltipOf } from "../catalogue/ca
 import { defaultFor } from "../catalogue/slots.js";
 import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
 import { FieldText } from "./finish.js";
+import { foldFields } from "../fold.js";
 
 export { PREFIX };
 export const typeOf = (id) => PREFIX + id;
@@ -328,6 +329,13 @@ function layout(block, def, settings, state) {
     });
     rows.text(words.tail);
     rows.end();
+  } else if (def.fold) {
+    // the words "Python code:" are the fold control; the text follows, and its first line while the block is folded
+    const { control, preview } = foldFields(block, words.replace(/\s*\[TEXT\]\s*$/, ""), def.kind === "statement");
+    rows.pending.push([control, "FOLD"]);
+    rows.field("TEXT");
+    rows.pending.push([preview, undefined]);
+    rows.end();
   } else {
     rows.tokens(words);
     rows.end();
@@ -605,6 +613,8 @@ function definition(def, settings) {
   return {
     init() {
       this.bfData = { blank: 0, trailing: false };
+      // On a phone there is no context menu (BF-D-051): Delete is in Move's bar, and a long press must not offer it elsewhere.
+      if (this.workspace.bfNoContextMenu) this.contextMenu = false;
       this.bfCatalogue = def.mutator === "args" || def.property ? settings.catalogue : undefined;
       if (def.hat) this.hat = "cap";   // a rounded top, as Scratch's "when ... clicked" (the renderer reads it)
       this.setColour(hueOf(def));
@@ -625,6 +635,12 @@ function definition(def, settings) {
         });
       }
       if (def.mutator) this.setMutator(new Blockly.icons.MutatorIcon(MUTATOR_ITEMS[def.mutator].map((i) => PREFIX + "m_" + i), this));
+    },
+
+    // A field is editable when its block is. The phone's modes (modes.js) lock values outside Values mode, with no change to the
+    // block's saved state (setEditable would be saved as editable: false). Blockly's own rule is kept for the rest.
+    isEditable() {
+      return !this.workspace.bfEditLocked && this.isOwnEditable() && !this.isDeadOrDying() && !this.workspace.isReadOnly();
     },
 
     saveExtraState() {

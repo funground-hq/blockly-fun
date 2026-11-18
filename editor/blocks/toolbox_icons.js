@@ -82,13 +82,22 @@ const CSS = `
 .injectionDiv .blocklyTreeRowContentContainer { display: flex; }
 .injectionDiv .bf-kit-icon { display: flex; color: var(--bf-kit); }
 .injectionDiv .blocklyToolboxSelected .bf-kit-icon { color: #fff; }
-/* The phone layout (BF-15): one row along the bottom. Each kind is 44 px square, a finger's size; the row scrolls sideways
-   by touch, and the half icon at its edge shows that there are more. */
-.injectionDiv.bf-phone .blocklyToolbox { overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; }
+/* The phone layout (BF-15, BF-D-051): one row along the bottom, as the mock-up's .kinds. Each kind is a 44 by 40 px outlined
+   button on the rail colour (the page's --rail, --ink, --panel; the mock-up's values when it has none); the chosen one is green.
+   The row scrolls sideways by touch, and the half button at its edge shows that there are more. */
+.injectionDiv.bf-phone .blocklyToolbox { overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; box-sizing: border-box;
+  padding: 6px; background: var(--rail, #efe6d2); border-top: 1.5px solid var(--ink, #191970); }
 .injectionDiv.bf-phone .blocklyToolbox::-webkit-scrollbar { display: none; }
-.injectionDiv.bf-phone .blocklyToolboxCategoryGroup { flex-wrap: nowrap; }
+.injectionDiv.bf-phone .blocklyScrollbarVertical, .injectionDiv.bf-phone .blocklyScrollbarHorizontal { pointer-events: none; }
+.injectionDiv.bf-phone .blocklyScrollbarHandle { fill: var(--muted, #6b6b8a); opacity: .3; }
+.injectionDiv.bf-phone .blocklyScrollbarBackground { fill: none; }
+.injectionDiv.bf-phone .blocklyToolboxCategoryGroup { flex-wrap: nowrap; gap: 4px; }
 .injectionDiv.bf-phone .blocklyToolboxCategoryContainer { flex: none; margin: 0; }
-.injectionDiv.bf-phone .blocklyToolboxCategory { width: 44px; height: 44px; }
+.injectionDiv.bf-phone .blocklyToolboxCategory { width: 44px; height: 40px; box-sizing: border-box; border: 1.5px solid var(--ink, #191970);
+  border-radius: 8px; background-color: var(--panel, #fffaf0); }
+.injectionDiv.bf-phone .bf-kit-icon { color: var(--ink, #191970); }
+.injectionDiv.bf-phone .blocklyToolboxSelected { background-color: var(--block-shape, #0fbd8c) !important; }
+.injectionDiv.bf-phone .blocklyToolboxSelected .bf-kit-icon { color: #fff; }
 `;
 
 let done = false;

@@ -1,5 +1,7 @@
 // BF-15 round 3 (BF-D-050), in a real browser: pick then move, adding by a tap, find a block, undo. Called by
-// tools/phone_check.mjs with the phone already open (360 x 720, touch) on demo/phone.html and the built bundle.
+// tools/phone_check.mjs with the phone already open (360 x 720, touch) on demo/phone.html and the built bundle. Since round 4
+// (BF-D-051) picking and moving are the Move mode, and adding (the search, a tap in the list) is the Add mode; the stacks
+// are in one column, so a drop that keeps the order puts the stack back, and the checks drop far enough to change the order.
 //
 // The functions named page* run in the page: they are turned into text and sent over the DevTools protocol.
 
@@ -14,6 +16,7 @@ function pageSetup() {
   const program = { blocks: { languageVersion: 0, blocks: [{ ...say("one", say("two", say("three", say("four", set)))), x: 20, y: 30 }] } };
   const editor = window.bfEditor;
   editor.workspace.getToolbox().clearSelection();   // on a phone a flyout stays open after a drag (attach.js): the checks start with none
+  editor.mode("move");
   editor.load(program);
   const workspace = editor.workspace;
   window.bfIds = [];
@@ -37,7 +40,7 @@ function pageSetup() {
     return bar && !bar.hidden && bar.offsetHeight > 0 ? bar.innerText.replace(/\s+/g, " ").trim() : null;
   };
   window.bfButton = (name) => {
-    const r = [...document.querySelectorAll(".bf-bar button")].find((b) => b.textContent === name).getBoundingClientRect();
+    const r = [...document.querySelectorAll(".bf-bar button")].find((b) => b.textContent.includes(name)).getBoundingClientRect();
     return [r.x + r.width / 2, r.y + r.height / 2];
   };
   // the value slot of the "set" block
@@ -78,7 +81,7 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
   const state = () => evaluate("({ picked: window.bfEditor.picked(), bar: window.bfBar(), marked: window.bfMarked(), canUndo: window.bfEditor.canUndo(), tops: window.bfTops() })");
 
   check(await run(pageSetup) === 5, "the program was not put in");
-  await sleep(500);
+  await sleep(700);                                              // Blockly draws, then the column puts the stack in place
   info.afterLoad = await state();
   info.afterLoad.canRedo = await evaluate("window.bfEditor.canRedo()");
   check(!info.afterLoad.canUndo && !info.afterLoad.canRedo && info.afterLoad.picked === null, "a program just loaded has something to undo, or is picked: " + JSON.stringify(info.afterLoad));
@@ -104,12 +107,15 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
   check(info.stack.marked === 5, "not every picked block is marked: " + info.stack.marked);
   info.barBox = await evaluate(`(() => {
     const r = document.querySelector(".bf-bar").getBoundingClientRect();
-    const row = document.querySelector(".blocklyToolbox").getBoundingClientRect();
-    return { bottom: Math.round(r.bottom), rowTop: Math.round(row.top), width: Math.round(r.width),
+    const foot = document.querySelector(".bf-foot").getBoundingClientRect();
+    return { bottom: Math.round(r.bottom), footTop: Math.round(foot.top), width: Math.round(r.width),
+      background: getComputedStyle(document.querySelector(".bf-bar")).backgroundColor,
       buttons: [...document.querySelectorAll(".bf-bar button")].map((b) => Math.round(b.getBoundingClientRect().height)) };
   })()`);
-  check(info.barBox.buttons.length === 2 && info.barBox.buttons.every((h) => h >= 40), "a button of the bar is under 40 px: " + JSON.stringify(info.barBox));
-  check(info.barBox.bottom <= info.barBox.rowTop + 1, "the bar is not above the row of kinds: " + JSON.stringify(info.barBox));
+  // the mock-up's .actbar: small buttons (30 px), on the ink colour
+  check(info.barBox.buttons.length === 2 && info.barBox.buttons.every((h) => h >= 30), "a button of the bar is under 30 px: " + JSON.stringify(info.barBox));
+  check(info.barBox.background === "rgb(25, 25, 112)", "the bar is not the ink colour: " + info.barBox.background);
+  check(info.barBox.bottom <= info.barBox.footTop + 1, "the bar is not above the foot bar: " + JSON.stringify(info.barBox));
   await shoot("pick_2_stack.png");
 
   // 3. a tap again picks only that block; another tap, the stack again
@@ -131,8 +137,9 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
     secondNext: window.bfEditor.workspace.getBlockById(window.bfIds[1]).getNextBlock()?.id === window.bfIds[2], bar: window.bfBar() })`);
   info.singleDrag = { start, moved };
   check(moved.tops === 2 && !moved.firstUnder && !moved.secondUnder && moved.secondNext, "dragging the single block did not take it alone: " + JSON.stringify(moved));
-  check(moved.first[0] !== start[0] && moved.first[1] !== start[1], "the single block did not move: " + JSON.stringify(info.singleDrag));
-  check(moved.bar !== null, "the block is not still picked after the drag");
+  // it is dropped below the stack that is left, and the column puts it under that stack: its top moved (its left edge is the column's)
+  check(moved.first[1] !== start[1], "the single block did not move: " + JSON.stringify(info.singleDrag));
+  check(await evaluate("window.bfEditor.picked()") !== null, "the block is not still picked after the drag");
   await shoot("pick_4_single_moved.png");
 
   // 5. a tap on another block picks that block's stack; a touch on any picked block takes the whole stack
@@ -140,22 +147,22 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
   const rest = await evaluate("window.bfEditor.picked()");
   check(rest?.count === 4 && !rest.single, "a tap on another block did not pick its stack: " + JSON.stringify(rest));
   const stackStart = await evaluate("[window.bfAt(1), window.bfAt(4)]");
-  await drag(await left(3), -10, 90);                            // on the fourth block, not the first picked one
+  await drag(await left(3), -10, 330);                           // on the fourth block, not the first picked one; far, so that the order changes
   const stackMoved = await evaluate("({ tops: window.bfTops(), first: window.bfAt(1), last: window.bfAt(4) })");
   info.stackDrag = { stackStart, stackMoved };
-  check(stackMoved.tops === 2 && stackMoved.first[1] !== stackStart[0][1] && stackMoved.last[1] - stackMoved.first[1] === stackStart[1][1] - stackStart[0][1],
+  check(stackMoved.tops === 2 && stackMoved.first[1] !== stackStart[0][1] && Math.abs(stackMoved.last[1] - stackMoved.first[1] - (stackStart[1][1] - stackStart[0][1])) <= 1,
     "dragging a picked stack did not move the whole stack together: " + JSON.stringify(info.stackDrag));
   await shoot("pick_5_stack_moved.png");
 
-  // 6. a tap on a value edits it, picked or not, and does not change what is picked
+  // 6. Move is for moving: a tap on a value opens no editor (values are edited in Values mode); it is a tap on the block, so it picks that block alone
   const pickedBefore = await evaluate("window.bfEditor.picked()");
   const numberAt = await evaluate("window.bfNumber()");
   await tap(...numberAt);
   info.field = await evaluate("({ editing: !!document.querySelector('.blocklyHtmlInput'), picked: window.bfEditor.picked() })");
   info.field.at = numberAt;
   info.field.under = await evaluate(`(([x, y]) => { const e = document.elementFromPoint(x, y); return e && (e.tagName + "." + String(e.className?.baseVal ?? e.className).split(" ")[0]); })(${JSON.stringify(numberAt)})`);
-  check(info.field.editing, "a tap on a number did not open its editor: " + JSON.stringify(info.field));
-  check(JSON.stringify(info.field.picked) === JSON.stringify(pickedBefore), "editing a value changed what is picked: " + JSON.stringify(info.field.picked));
+  check(!info.field.editing, "a tap on a number opened its editor in Move mode: " + JSON.stringify(info.field));
+  check(info.field.picked?.count === 1 && info.field.picked.single, "a tap on a value in Move did not pick that block alone: " + JSON.stringify(info.field.picked));
   await shoot("pick_6_field.png");
   await touch("touchStart", 5, 300); await touch("touchEnd");    // a tap on empty space closes the editor, and puts down
   await sleep(400);
@@ -176,8 +183,10 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
   await evaluate("window.bfEditor.undo()");
   await sleep(300);
 
-  // 8. find a block: the first icon of the row; typing shows the matches; a tap adds one under the picked block
-  await tap(...await left(1));                                   // pick "two" and the ones under it ("one" was moved out in step 4)
+  // 8. Add mode: the row of kinds shows; find a block is its first icon; typing shows the matches; a tap adds one under the marked block
+  await evaluate('window.bfEditor.mode("add")');
+  await sleep(300);
+  await tap(...await left(1));                                   // mark "two" ("one" was moved out in step 4)
   const searchIcon = await evaluate(`(() => { const r = document.querySelector(".blocklyToolboxCategoryContainer").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
   const name = await evaluate(`document.querySelector(".blocklyToolboxCategoryContainer").getAttribute("aria-label")`);
   check(name === "Find a block", "the first item of the row is not the search: " + name);
@@ -199,7 +208,7 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
     flyoutOpen: window.bfEditor.workspace.getFlyout().isVisible(), canUndo: window.bfEditor.canUndo() })`);
   info.added = { namesBefore, added };
   check(added.names.length === namesBefore.length + 1 && added.under === "bf_circle", "a tap did not add the circle under the picked block: " + JSON.stringify(info.added));
-  check(added.picked?.single && added.picked.count === 1, "the new block is not picked alone: " + JSON.stringify(added.picked));
+  check(added.picked?.single && added.picked.count === 1, "the new block is not marked alone: " + JSON.stringify(added.picked));
   check(added.flyoutOpen, "the flyout closed after an add");
   // the new block is in sight: above the bar and the search box, below the top of the screen
   info.addedInView = await evaluate(`(() => {
@@ -220,7 +229,7 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
   check(await evaluate("window.bfStatements().length") === namesBefore.length, "a second undo did not take back the first add");
 
   // 9. a value goes into the first empty slot of the picked block: "square" finds "square root of"
-  await tap(...await left(4));                                   // the "set v to 0" block
+  await tap(...await left(4));                                   // the "set v to 0" block (marked)
   check((await evaluate("window.bfSearch()"))?.visible, "picking another block closed the search");
   // the search is still open (a tap on a block does not close it); a tap on its icon would close it
   await evaluate("document.querySelector('.bf-find input').select()");
@@ -257,33 +266,43 @@ export async function pickChecks({ evaluate, touch, tap, shoot, report, sleep, c
   check((await state()).picked === null, "Done did not put down");
 }
 
-/** The wide layout: a mouse drags a block as it always did, and the search is the top of the column. */
+/**
+ * The wide layout: a mouse drags a block as it always did, and the search is the top of the column. Blockly's zoom buttons and
+ * bin are still there and there are no modes. The stacks are in one column here too: dragging the first below the second
+ * swaps them, and one Undo takes the drag and the move into place back.
+ */
 export async function wideChecks({ evaluate, cdp, shoot, report, sleep }) {
   const check = (ok, message) => { if (!ok) report.problems.push("wide: " + message); };
   const info = {};
   report.wide = info;
   await evaluate(`(() => {
     const say = (text) => ({ type: "bf_say", extraState: { items: 1 }, inputs: { ARG0: { block: { type: "bf_text", fields: { TEXT: text } } } } });
-    window.bfEditor.load({ blocks: { languageVersion: 0, blocks: [{ ...say("one"), x: 40, y: 40 }] } });
-    window.bfWide = () => {
-      const block = window.bfEditor.workspace.getTopBlocks(true)[0];
+    window.bfEditor.load({ blocks: { languageVersion: 0, blocks: [{ ...say("one"), x: 40, y: 40 }, { ...say("two"), x: 40, y: 200 }] } });
+    const ids = window.bfEditor.workspace.getTopBlocks(true).map((b) => b.id);
+    window.bfWide = (i = 0) => {
+      const block = window.bfEditor.workspace.getBlockById(ids[i]);
       const r = block.getSvgRoot().querySelector(":scope > .blocklyPath").getBoundingClientRect();
       const p = block.getRelativeToSurfaceXY();
       return { grab: [r.x + 10, r.y + r.height / 2], at: [Math.round(p.x), Math.round(p.y)] };
     };
   })()`);
-  await sleep(400);
+  await sleep(700);
+  info.controls = await evaluate(`({ zoom: !!document.querySelector(".blocklyZoom"), bin: !!document.querySelector(".blocklyTrash"), mode: window.bfEditor.mode() })`);
+  check(info.controls.zoom && info.controls.bin && info.controls.mode === null, "the wide layout lost Blockly's controls or has modes: " + JSON.stringify(info.controls));
+  info.column = await evaluate("[window.bfWide(0).at, window.bfWide(1).at]");
+  check(info.column[0][0] === info.column[1][0] && info.column[0][1] < info.column[1][1], "the two stacks are not in one column after a load: " + JSON.stringify(info.column));
   info.first = await evaluate(`(() => { const first = document.querySelector(".blocklyToolboxCategoryContainer"); return { name: first.getAttribute("aria-label"), x: Math.round(first.getBoundingClientRect().x) }; })()`);
   check(info.first.name === "Find a block", "the first item of the column is not the search: " + JSON.stringify(info.first));
   const mouse = (type, x, y) => cdp.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
-  const start = await evaluate("window.bfWide()");
+  const start = await evaluate("window.bfWide(0)");
   await mouse("mousePressed", ...start.grab);
-  for (let step = 1; step <= 10; step += 1) { await mouse("mouseMoved", start.grab[0] + step * 15, start.grab[1] + step * 12); await sleep(25); }
-  await mouse("mouseReleased", start.grab[0] + 150, start.grab[1] + 120);
-  await sleep(400);
-  const end = await evaluate("window.bfWide()");
-  info.drag = { start: start.at, end: end.at };
-  check(end.at[0] !== start.at[0] && end.at[1] !== start.at[1], "a mouse drag on a block did not move it in the wide layout: " + JSON.stringify(info.drag));
+  for (let step = 1; step <= 10; step += 1) { await mouse("mouseMoved", start.grab[0] + step * 3, start.grab[1] + step * 30); await sleep(25); }
+  await mouse("mouseReleased", start.grab[0] + 30, start.grab[1] + 300);
+  await sleep(600);
+  const end = await evaluate("[window.bfWide(0).at, window.bfWide(1).at]");
+  info.drag = { start: info.column, end };
+  check(end[0][1] > end[1][1] && end[0][0] === end[1][0], "a mouse drag of the first stack below the second did not swap them, in one column: " + JSON.stringify(info.drag));
+  check(await evaluate("window.bfEditor.canUndo()"), "the drag is not a step to undo");
   check(await evaluate("window.bfEditor.picked()") === null, "the wide layout picks blocks");
   // the search: the box lies over the top of the flyout, and a result is a block that can be dragged out
   // Blockly picks a category on pointerdown: a real mouse click on the icon, not element.click()
@@ -300,7 +319,7 @@ export async function wideChecks({ evaluate, cdp, shoot, report, sleep }) {
   check(info.found.includes("circle"), "the wide search for circle found: " + JSON.stringify(info.found));
   await shoot("wide_search.png");
   // undo and redo are the same in the wide layout
-  const undone = await evaluate("(() => { const can = window.bfEditor.canUndo(); window.bfEditor.undo(); return new Promise((r) => setTimeout(() => r({ can, back: window.bfEditor.workspace.getTopBlocks(true)[0].getRelativeToSurfaceXY().x }), 300)); })()");
+  const undone = await evaluate("(() => { const can = window.bfEditor.canUndo(); window.bfEditor.undo(); return new Promise((r) => setTimeout(() => r({ can, now: [window.bfWide(0).at, window.bfWide(1).at] }), 400)); })()");
   info.undo = undone;
-  check(undone.can && Math.round(undone.back) === start.at[0], "undo did not take the drag back in the wide layout: " + JSON.stringify(undone));
+  check(undone.can && undone.now[0][1] < undone.now[1][1], "undo did not take the drag back in the wide layout: " + JSON.stringify(undone));
 }

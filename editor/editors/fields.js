@@ -61,6 +61,20 @@ export const slide = (text, { low, high, step }) => new SliderField(text, low, h
 export const multiline = (text) => new LinesField(text);
 
 // ---------------------------------------------------------------------------------------------------------------
+// Words from a fixed list
+
+/**
+ * A text in a slot whose choices the catalogue lists (a text style is "normal", "bold", "italic" or "bold_italic"): a
+ * dropdown of those words. The text is the word, so the saved JSON and the Python are what they were with a plain box. A
+ * text that is not one of the words is refused (the dropdown would show another word), and the block keeps its plain box.
+ */
+export const choice = (text, words) => {
+  const field = new Blockly.FieldDropdown(words.map((word) => [word, word]));
+  field.setValue(text);
+  return field;
+};
+
+// ---------------------------------------------------------------------------------------------------------------
 // Colours: a grid of funground's names, and "More colours"
 
 const MORE = "\u0000more-colours";

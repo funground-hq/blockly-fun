@@ -1,17 +1,33 @@
-// Puts the touch parts on a workspace (BF-D-050): the search box in both layouts, and in the phone layout pick-then-move,
-// the action bar and adding a block by a tap. index.js calls it once for each workspace it makes.
+// Puts the touch parts on a workspace (BF-D-050, BF-D-051): the search box and the one column in both layouts, and in the phone
+// layout the modes, the foot bar, pick-then-move, the action bar, adding a block by a tap and the keyboard rule.
+// index.js calls it once for each workspace it makes.
 
 import * as Blockly from "blockly";
 import { attachFind } from "./find.js";
 import { attachPick } from "./pick.js";
 import { addBlock } from "./add.js";
 import { Dock } from "./dock.js";
+import { Column } from "./column.js";
+import { Modes, toolboxVisibility, watchPresses, resetView, modeOf } from "./modes.js";
+import { FootBar } from "./foot.js";
+import { keepAboveKeyboard } from "./keyboard.js";
 import { SEARCH_CATEGORY } from "./blocks/register.js";
 
-export function attach(workspace, { layout }) {
+const START_PAD = 12;      // Reset leaves this many px between the view's edge and the first block
+
+/**
+ * `frame` and `stage` (the phone layout) are the elements index.js made: the stage holds Blockly, the frame the stage and
+ * the foot bar. `mode` is the mode to start in and `onMode(id)` hears of each change.
+ */
+export function attach(workspace, { layout, frame = null, stage = null, mode = "read", onMode = () => {} }) {
   const phone = layout === "phone";
   const find = attachFind(workspace, { layout });
+  const column = new Column(workspace);
+  workspace.bfColumn = column;            // a fold asks it to put the stacks in order again (fold.js)
   let picker = null;
+  let modes = null;
+  let foot = null;
+  let stopKeyboard = () => {};
   let last = "";
   const dock = new Dock(workspace, {
     phone,
@@ -32,6 +48,9 @@ export function attach(workspace, { layout }) {
     const flyout = workspace.getFlyout();
     const autoClose = !(flyoutOpen() && (phone || find.isOpen()));
     if (flyout && flyout.autoClose !== autoClose) flyout.setAutoClose(autoClose);
+  };
+  const closeList = () => {
+    if (flyoutOpen()) workspace.getToolbox()?.clearSelection();
   };
   const show = () => {
     const info = picker?.info() ?? null;
@@ -58,12 +77,47 @@ export function attach(workspace, { layout }) {
     workspace.scrollBoundsIntoView(box, 24);
   };
 
+  const reset = () => {
+    resetView(workspace, picker, START_PAD);
+    sync();
+  };
+
   if (phone) {
-    picker = attachPick(workspace, show);
+    // Add mode is read-only (modes.js): a tap on a block reaches the workspace as a tap on empty space, and the block is found
+    // from where the touch began
+    const presses = watchPresses(workspace);
+    picker = attachPick(workspace, show, {
+      block: (block) => modes.tapBlock(block),
+      space: () => {
+        const block = presses.take();
+        if (block && modes.rules.readOnly) {
+          modes.tapBlock(block);
+        } else {
+          picker.clear();
+          closeList();
+        }
+      },
+    });
+    modes = new Modes(workspace, {
+      picker,
+      toolbox: toolboxVisibility(workspace),
+      changed: (current) => {
+        dock.setMode(current.id);
+        foot.show(current);
+        sync();
+        onMode(current.id);
+      },
+    });
+    foot = new FootBar(frame, stage, {
+      mode: (id) => modes.set(id),
+      zoom: (direction) => workspace.zoomCenter(direction),
+      reset,
+    });
+    modes.set(modeOf(mode).id);
     // a tap on a block in the flyout adds it (the toolbox's flyout stays open, so several can be added one after another)
     const flyout = workspace.getFlyout().getWorkspace();
     flyout.addChangeListener((event) => {
-      if (event.type !== Blockly.Events.CLICK || event.targetType !== "block" || !event.blockId) return;
+      if (event.type !== Blockly.Events.CLICK || event.targetType !== "block" || !event.blockId || modes.id !== "add") return;
       const block = flyout.getBlockById(event.blockId)?.getRootBlock();
       if (!block) return;
       const state = Blockly.serialization.blocks.save(block, { addCoordinates: false, addNextBlocks: false });
@@ -71,11 +125,15 @@ export function attach(workspace, { layout }) {
       if (result.ok) reveal(result.block);
       else dock.say(result.message);
     });
+    stopKeyboard = keepAboveKeyboard(frame, () => {
+      Blockly.svgResize(workspace);
+      dock.place();
+    });
   }
   workspace.addChangeListener((event) => {
     if (event.type === Blockly.Events.TOOLBOX_ITEM_SELECT) sync();
-    // a flyout that does not close itself closes on a tap on empty space, as Blockly's own does
-    else if (event.type === Blockly.Events.CLICK && event.targetType === "workspace" && flyoutOpen()) workspace.getToolbox()?.clearSelection();
+    // a flyout that does not close itself closes on a tap on empty space, as Blockly's own does (on a phone the taps are above)
+    else if (!phone && event.type === Blockly.Events.CLICK && event.targetType === "workspace") closeList();
   });
   // After a touch the browser sends mouse events of its own, and their mousedown would put the keyboard's focus on the
   // search's icon, after the box has taken it. Blockly picks a category on pointerdown, so the mousedown has nothing to do.
@@ -83,13 +141,20 @@ export function attach(workspace, { layout }) {
   searchIcon?.getDiv()?.addEventListener("mousedown", (event) => event.preventDefault());
   const place = () => dock.place();
   window.addEventListener("resize", place);
+  column.schedule();                      // the blocks that came with the workspace are put in the column
   return {
     picker,
+    modes,
     dock,
     find,
+    column,
     sync,
+    reset,
     dispose() {
       window.removeEventListener("resize", place);
+      stopKeyboard();
+      foot?.dispose();
+      column.dispose();
       dock.dispose();
     },
   };

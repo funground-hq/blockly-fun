@@ -102,8 +102,10 @@ const OWN_CALL = {
   line: "[NAME](a, b)",
 };
 
+// fold: the block can be folded to one line (editor/fold.js); a statement always can, a value when its text has several lines
 const CODE = {
   cat: "code",
+  fold: true,
   fields: { TEXT: { kind: "code", default: "pass" } },
   scratch: "Python code: [TEXT]",
   python: "Python code: [TEXT]",

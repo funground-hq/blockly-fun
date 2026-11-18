@@ -5,15 +5,20 @@
 // Chrome is emulated as a phone (360 x 720 CSS px, touch, mobile) and opens demo/phone.html, which loads the built
 // bundle (dist/). Checks, and prints as JSON:
 //   1. the layout follows the screen: "phone" at 360 x 720, "wide" at 1000 x 700, and switching keeps the blocks;
-//   2. on the phone the toolbox is a row along the bottom, one icon per kind, each with a name, and fits the screen;
-//   3. a tap opens a flyout above the row; the zoom controls and the trashcan are not under the row;
-//   4. a touch drag takes a block out of the flyout into the work area;
+//   2. on the phone the editor starts in Read mode (the kinds of blocks are hidden); in Add mode the toolbox is a row along the
+//      bottom, one icon per kind, each with a name, and fits the screen;
+//   3. a tap opens a flyout above the row; Blockly's zoom controls and bin are not drawn on a phone (BF-D-051);
+//   4. a touch drag in the list of blocks does not add a block (a tap does);
 //   5. the page does not scroll sideways;
-//   6. pick, then move, adding by a tap, find a block and undo (BF-D-050; tools/pick_checks.mjs): a drag on an unpicked block
-//      scrolls and does not move it; a tap picks the stack and the action bar shows; a tap again picks one; a drag moves
-//      only what is picked; a tap on a value edits it; Delete then undo brings the blocks back; a search finds blocks and a
-//      tap adds one under the picked block or into its first empty slot; a program just loaded has nothing to undo; and the
-//      wide layout still drags a block with a mouse and has the search at the top of its column.
+//   6. the modes, the foot bar, folding, the one column, the keyboard (tools/mode_checks.mjs; BF-D-051): Read is the start and a
+//      tap changes nothing; Values edits a number; Reset; a Python code block opens and folds; no two stacks overlap after one
+//      is dropped on another, and one Undo takes the drop and the move into place back; the search stays above the keyboard;
+//   7. pick, then move, adding by a tap, find a block and undo (BF-D-050; tools/pick_checks.mjs, in Move and Add mode): a drag
+//      on an unpicked block scrolls and does not move it; a tap picks the stack and the action bar shows; a tap again picks
+//      one; a drag moves only what is picked; a tap on a value edits it; Delete then undo brings the blocks back; a search
+//      finds blocks and a tap adds one under the marked block or into its first empty slot; a program just loaded has nothing
+//      to undo; and the wide layout still drags a block with a mouse, has the search at the top of its column, keeps Blockly's
+//      zoom buttons and bin, has no modes, and puts stacks in one column too.
 // No network is needed. Environment: BF_PYTHON (python.exe, for tools/serve.py), BF_CHROME (chrome.exe).
 
 import { spawn } from "node:child_process";
@@ -22,6 +27,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pickChecks, wideChecks } from "./pick_checks.mjs";
+import { modeChecks } from "./mode_checks.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PYTHON = process.env.BF_PYTHON || "C:\\Projects\\playground\\.venv\\Scripts\\python.exe";
@@ -92,10 +98,14 @@ async function main() {
     const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });   // a touch that ends has no points left
     const tap = async (x, y) => { await touch("touchStart", x, y); await sleep(60); await touch("touchEnd", x, y); await sleep(300); };
 
-    // 1 and 2. the phone: the layout follows the screen, and the toolbox is a row at the bottom
+    // 1 and 2. the phone: the layout follows the screen; it starts in Read mode, and in Add mode the toolbox is a row at the bottom
     await open("", 360, 720, true);
     report.layout = await evaluate("window.bfEditor.layout()");
     if (report.layout !== "phone") report.problems.push("a 360 x 720 touch screen did not get the phone layout: " + report.layout);
+    report.firstMode = await evaluate("window.bfEditor.mode()");
+    if (report.firstMode !== "read") report.problems.push("the phone did not start in Read mode: " + report.firstMode);
+    await evaluate('window.bfEditor.mode("add")');
+    await sleep(300);
     const row = await evaluate(`(() => {
       const toolbox = document.querySelector(".blocklyToolbox").getBoundingClientRect();
       const items = [...document.querySelectorAll(".blocklyToolboxCategoryContainer")];
@@ -110,19 +120,13 @@ async function main() {
     if (row.toolbox.w > row.innerW + 1) report.problems.push("the toolbox is wider than the screen");
     if (!row.sameRow) report.problems.push("the categories are not in one row");
     if (!row.count || row.named !== row.count) report.problems.push("a category has no name or no icon: " + JSON.stringify(row));
-    if (row.itemW < 44 || row.itemH < 44) report.problems.push("a category is smaller than a finger: " + row.itemW + " x " + row.itemH);
+    // the mock-up's .kinds buttons are 44 by 40 px
+    if (row.itemW !== 44 || row.itemH !== 40) report.problems.push("a category is not 44 x 40 px: " + row.itemW + " x " + row.itemH);
     await shoot("phone_1_row.png");
 
-    // 3. the zoom controls and the trashcan are above the row; a tap opens the flyout above it
-    const controls = await evaluate(`(() => {
-      const top = document.querySelector(".blocklyToolbox").getBoundingClientRect().top;
-      return [".blocklyZoom", ".blocklyTrash"].map((n) => {
-        const r = document.querySelector(n)?.getBoundingClientRect();
-        return { n, bottom: r && r.bottom, top };
-      });
-    })()`);
-    report.controls = controls;
-    for (const c of controls) if (c.bottom === undefined || c.bottom > c.top + 1) report.problems.push(`${c.n} is under the row: ` + JSON.stringify(c));
+    // 3. Blockly's zoom buttons and bin are not drawn on a phone; a tap opens the flyout above the row
+    report.controls = await evaluate(`[".blocklyZoom", ".blocklyTrash"].map((n) => ({ n, drawn: !!document.querySelector(n) }))`);
+    for (const c of report.controls) if (c.drawn) report.problems.push(`${c.n} is drawn on a phone`);
     // the first item is the search (its flyout is a hint, no blocks), so the second is the first kind of blocks
     const first = await evaluate(`(() => { const r = document.querySelectorAll(".blocklyToolboxCategoryContainer")[1].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
     await tap(first[0], first[1]);
@@ -137,7 +141,7 @@ async function main() {
     else if (flyout.bottom > flyout.rowTop + 1) report.problems.push("the flyout is not above the row: " + JSON.stringify(flyout));
     await shoot("phone_2_flyout.png");
 
-    // 4. a touch drag takes a block out of the flyout, up into the work area
+    // 4. a touch drag in the list of blocks does not take a block out of it (in Add mode a tap adds)
     const grab = await evaluate(`(() => {
       const block = window.bfEditor.workspace.getFlyout().getWorkspace().getTopBlocks(true)[0];
       const r = block.getSvgRoot().getBoundingClientRect();
@@ -150,7 +154,7 @@ async function main() {
     await sleep(400);
     const after = await evaluate("window.bfEditor.workspace.getTopBlocks(false).map((b) => b.type)");
     report.drag = { grabbed: grab.type, before, after: after.length };
-    if (after.length !== before + 1 || !after.includes(grab.type)) report.problems.push("a touch drag did not put the block in the work area: " + JSON.stringify(report.drag));
+    if (after.length !== before) report.problems.push("a touch drag in the list of blocks added a block: " + JSON.stringify(report.drag));
     await shoot("phone_3_dragged.png");
 
     // 5. no sideways scroll
@@ -158,7 +162,9 @@ async function main() {
     report.scroll = scroll;
     if (scroll.doc > scroll.inner || scroll.body > scroll.inner) report.problems.push("the page scrolls sideways: " + JSON.stringify(scroll));
 
-    // 6. pick, then move; adding by a tap; find a block; undo
+    // 6. the modes, the foot bar, folding, the one column; 7. pick, then move; adding by a tap; find a block; undo
+    await modeChecks({ evaluate, touch, tap, shoot, report, sleep, cdp, open });
+    await open("", 360, 720, true);
     await pickChecks({ evaluate, touch, tap, shoot, report, sleep, cdp });
 
     // 1 again. a switch keeps the program; the wide layout is a column on the left

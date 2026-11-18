@@ -47,6 +47,12 @@ export class Picker {
     this.size = 0;            // how many blocks of the stack are picked
     this.marked = new Set();
     this.starting = false;    // true while a drag is starting (see PickStrategy.startDrag)
+    this.allowed = { move: true };   // what the mode allows (modes.js)
+  }
+
+  /** What the mode allows: `move`, whether a picked block may be dragged. */
+  allow({ move = this.allowed.move } = {}) {
+    this.allowed = { move };
   }
 
   get active() {
@@ -163,7 +169,7 @@ export class PickStrategy extends Blockly.dragging.BlockDragStrategy {
   }
 
   isMovable() {
-    return super.isMovable() && (this.picker.starting || this.picker.owns(this.block));
+    return super.isMovable() && this.picker.allowed.move && (this.picker.starting || this.picker.owns(this.block));
   }
 
   startDrag(e) {
@@ -195,16 +201,19 @@ export function installStrategies(workspace, picker) {
 
 /**
  * Makes a workspace pick-then-move. Taps come as Blockly's click events: a block's click picks, a click on empty space
- * puts down. Returns the Picker.
+ * puts down. `taps` says what a tap does (the mode decides: modes.js): `block(block)`, by default the Picker's rotation, and
+ * `space()` for a tap on empty space, by default putting down. Returns the Picker.
  */
-export function attachPick(workspace, changed) {
+export function attachPick(workspace, changed, taps = {}) {
   const picker = new Picker(workspace, changed);
+  const onTap = taps.block ?? ((block) => picker.tap(block));
+  const onSpace = taps.space ?? (() => picker.clear());
   installStrategies(workspace, picker);
   workspace.addChangeListener((event) => {
     if (event.type === Blockly.Events.CLICK) {
       installStrategies(workspace, picker);
-      if (event.targetType === "block" && event.blockId) picker.tap(workspace.getBlockById(event.blockId));
-      else if (event.targetType === "workspace") picker.clear();
+      if (event.targetType === "block" && event.blockId) onTap(workspace.getBlockById(event.blockId));
+      else if (event.targetType === "workspace") onSpace();
       return;
     }
     if (event.isUiEvent && event.type !== Blockly.Events.BLOCK_DRAG) return;

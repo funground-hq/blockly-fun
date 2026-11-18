@@ -127,6 +127,25 @@ export function numberEditor(block, catalogue) {
   return { key: "plain" };
 }
 
+// A parameter whose type is a group of words and nothing else: `CONSTANTS.MODE`, or `CONSTANTS.STYLE | None`. One that also takes
+// a number or any text (`int | CONSTANTS.PAGE | str`) is not a choice from a list.
+const GROUP = /^CONSTANTS\.(\w+)(?:\s*\|\s*None)?$/;
+
+/**
+ * The words a text block may be, when the catalogue lists them for the slot, else null. The catalogue lists them in two ways:
+ * the parameter's `options` (each word with its meaning), and its type in `detail`, a CONSTANTS group (the words alone).
+ * Colour slots are not here: their words are a grid of colours, and a colour is also any hex value.
+ */
+export function choicesOf(block, catalogue) {
+  const slot = slotParam(block, catalogue);
+  if (!slot) return null;
+  const listed = slot.entry.raw.options?.[slot.param.name]?.map((option) => option.word);
+  if (listed?.length) return listed;
+  const type = new RegExp(`(?:^|[(,])\\s*\\*?${slot.param.name}:\\s*([^,)=]+)`).exec(slot.entry.raw.detail ?? "")?.[1]?.trim();
+  const group = type && GROUP.exec(type)?.[1];
+  return (group && catalogue.constantWords(group)) || null;
+}
+
 /** Whether a text block is in a colour slot. */
 export function isColourSlot(block, catalogue) {
   const slot = slotParam(block, catalogue);

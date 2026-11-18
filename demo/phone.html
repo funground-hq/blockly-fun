@@ -16,9 +16,12 @@
   <script type="module">
     const bf = await import("../dist/blockly-fun.js");
     const element = document.getElementById("blocks");
+    // ?catalogue gives the editor funground's catalogue (a copy kept for the tests), as Play does
+    const catalogue = new URLSearchParams(location.search).has("catalogue")
+      ? await (await fetch("../tests/fixtures/funground/completions.json")).json() : null;
     const wanted = () => (new URLSearchParams(location.search).get("layout")
       ?? (bf.isPhoneScreen(screen.width, screen.height) ? "phone" : "wide"));
-    const editor = bf.createBlocksEditor({ element, media: "../dist/media/", layout: wanted() });
+    const editor = bf.createBlocksEditor({ element, media: "../dist/media/", layout: wanted(), catalogue });
     window.bfEditor = editor;
     window.bfReady = true;
     // the switch on resize or rotation; resize() measures the page again when the layout stays
