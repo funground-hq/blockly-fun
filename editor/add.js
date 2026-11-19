@@ -51,14 +51,14 @@ function emptySlot(workspace, owner, value) {
 }
 
 /** Where a block goes just under `owner`: its next connection or, with none (a hat), the start of its first C. */
-function belowOf(owner) {
+export function belowOf(owner) {
   if (owner.nextConnection) return owner.nextConnection;
   const input = owner.inputList.find((i) => i.type === Blockly.inputs.inputTypes.STATEMENT && i.connection);
   return input?.connection ?? null;
 }
 
 /** The connection at the end of a C's blocks (or the C itself when it is empty); null if the last block cannot take more. */
-function endOf(connection) {
+export function endOf(connection) {
   let c = connection;
   for (let b = c.targetBlock(); b && !b.isShadow(); b = c.targetBlock()) {
     if (!b.nextConnection) return null;
@@ -68,7 +68,7 @@ function endOf(connection) {
 }
 
 /** The end of the "every frame" block's C, else of the first hat's. */
-function endOfSketch(workspace) {
+export function endOfSketch(workspace) {
   const tops = workspace.getTopBlocks(true);
   const hats = [tops.find((b) => b.type === FRAME), tops.find((b) => HATS.has(b.type))];
   for (const hat of hats) {

@@ -28,7 +28,7 @@ export function wordsOf(text) {
   return out;
 }
 
-function haystack(def, state) {
+export function haystack(def, state) {
   const options = Object.values(def?.fields ?? {}).flatMap((f) => (f.options ?? []).flatMap((o) => [o.scratch, o.python]));
   const visible = new Set();
   const python = new Set();
