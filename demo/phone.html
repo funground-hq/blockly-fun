@@ -7,11 +7,14 @@
   <style>
     html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
     #blocks { position: absolute; inset: 0; }
-    /* the host's own strip for the held layout (spike A of BF-D-053): Undo and Redo always shown, 44 px high */
+    /* the host's own strip for the phone spikes (BF-D-053): Undo and Redo always shown, 44 px high; in spike B also the switch of look */
     #host { display: none; position: absolute; inset: 0 0 auto 0; height: 48px; box-sizing: border-box; padding: 2px 6px; gap: 6px; align-items: center;
       background: #fffaf0; border-bottom: 2px solid #191970; }
     #host button { min-height: 44px; min-width: 64px; font: 600 15px system-ui, sans-serif; border: 1.5px solid #191970; border-radius: 10px; background: #fdf6e7; }
     #host button:disabled { opacity: 0.4; }
+    #host .look { display: none; }
+    #host .look[aria-pressed="true"] { background: #191970; color: #fdf6e7; }
+    body.listing #host .look { display: block; }
     body.held #host { display: flex; }
     body.held #blocks { top: 48px; }
   </style>
@@ -19,7 +22,8 @@
 <body>
   <!-- The phone layout (BF-15) as a host page gets it: the built bundle (npm run build), the layout chosen from the
        screen's size as BF-D-049 says, and switched again when the window changes size. tools/phone_check.mjs drives it. -->
-  <div id="host"><button id="undo" type="button">Undo</button><button id="redo" type="button">Redo</button></div>
+  <div id="host"><button id="undo" type="button">Undo</button><button id="redo" type="button">Redo</button>
+    <button class="look" data-look="blocks" type="button" aria-pressed="true">Blocks</button><button class="look" data-look="code" type="button" aria-pressed="false">Code</button></div>
   <div id="blocks"></div>
   <script type="module">
     const bf = await import("../dist/blockly-fun.js");
@@ -29,16 +33,24 @@
       ? await (await fetch("../tests/fixtures/funground/completions.json")).json() : null;
     const wanted = () => (new URLSearchParams(location.search).get("layout")
       ?? (bf.isPhoneScreen(screen.width, screen.height) ? "phone" : "wide"));
-    const held = wanted() === "phone-a";
-    document.body.classList.toggle("held", held);
+    const layout = wanted();
+    document.body.classList.toggle("held", layout === "phone-a" || layout === "phone-b");
+    document.body.classList.toggle("listing", layout === "phone-b");
     const undo = document.getElementById("undo");
     const redo = document.getElementById("redo");
     const history = () => { undo.disabled = !window.bfEditor?.canUndo(); redo.disabled = !window.bfEditor?.canRedo(); };
-    const editor = bf.createBlocksEditor({ element, media: "../dist/media/", layout: wanted(), catalogue, onHistory: history });
+    const editor = bf.createBlocksEditor({ element, media: "../dist/media/", layout, catalogue, onHistory: history });
     window.bfEditor = editor;
     undo.addEventListener("click", () => { editor.undo(); history(); });
     redo.addEventListener("click", () => { editor.redo(); history(); });
     history();
+    // spike B's two looks of the same rows (editor.look is for the spike only)
+    for (const button of document.querySelectorAll("#host .look")) {
+      button.addEventListener("click", () => {
+        editor.look(button.dataset.look);
+        for (const other of document.querySelectorAll("#host .look")) other.setAttribute("aria-pressed", String(other === button));
+      });
+    }
     window.bfReady = true;
     // the switch on resize or rotation; resize() measures the page again when the layout stays
     window.addEventListener("resize", () => {

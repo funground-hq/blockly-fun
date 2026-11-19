@@ -18,7 +18,7 @@ test("a phone is a screen whose narrow side is under 600 CSS px, whichever way i
 });
 
 test("the wide layout adds nothing to Blockly's options; the phone layout is the bottom toolbox, horizontal", () => {
-  assert.deepEqual(LAYOUTS, ["wide", "phone", "phone-a"]);   // phone-a is spike A of BF-D-053
+  assert.deepEqual(LAYOUTS, ["wide", "phone", "phone-a", "phone-b"]);   // phone-a and phone-b are the two spikes of BF-D-053
   assert.deepEqual(layoutOptions("wide"), {});
   const phone = layoutOptions("phone");
   assert.equal(phone.toolboxPosition, "end");

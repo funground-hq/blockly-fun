@@ -8,73 +8,21 @@
 // taps per task (against the budget), pass or fail per criterion, and the problems found. Exit code 1 when a problem was found.
 // Environment: BF_PYTHON (python.exe, for tools/serve.py), BF_CHROME (chrome.exe).
 
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { launch, sleep } from "./phone_check_lib.mjs";
 import timeBased from "../tests/phone_fixtures/time_based.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PYTHON = process.env.BF_PYTHON || "C:\\Projects\\playground\\.venv\\Scripts\\python.exe";
-const BROWSER = process.env.BF_CHROME || "C:\\Users\\samirj\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe";
 const PORT = 8768;
 const DEBUG_PORT = 9342;
 const screenshots = process.argv.includes("--screenshots") ? process.argv[process.argv.indexOf("--screenshots") + 1] : null;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function connect(url) {
-  const socket = new WebSocket(url);
-  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-  let id = 0;
-  const waiting = new Map();
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.id && waiting.has(message.id)) {
-      const { resolve, reject } = waiting.get(message.id);
-      waiting.delete(message.id);
-      if (message.error) reject(new Error(message.error.message)); else resolve(message.result);
-    }
-  };
-  // a call the browser never answers is a failure, not a wait without end
-  const send = (method, params = {}) => new Promise((resolve, reject) => {
-    id += 1;
-    waiting.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, method, params }));
-    setTimeout(() => reject(new Error("no answer from the browser to " + method)), 20000);
-  });
-  return { send, close: () => socket.close() };
-}
 
 async function main() {
-  const server = spawn(PYTHON, ["-I", join(ROOT, "tools", "serve.py"), "--port", String(PORT)], { stdio: "ignore" });
-  const profile = mkdtempSync(join(tmpdir(), "bf-spike-a-"));
-  const browser = spawn(BROWSER, ["--headless=new", "--disable-gpu", `--remote-debugging-port=${DEBUG_PORT}`,
-    `--user-data-dir=${profile}`, "--window-size=1000,800", "about:blank"], { stdio: "ignore" });
   const report = { tasks: {}, criteria: {}, problems: [] };
-  let cdp = null;
+  const page = await launch({ root: ROOT, tag: "spike-a", port: PORT, debugPort: DEBUG_PORT, screenshots });
+  const { cdp, evaluate, shoot, touch, open, load, python } = page;
   try {
-    let target = null;
-    for (let i = 0; i < 60 && !target; i += 1) {
-      await sleep(500);
-      try { target = (await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json()).find((t) => t.type === "page"); } catch { /* not up yet */ }
-    }
-    if (!target) throw new Error("the browser did not start");
-    cdp = await connect(target.webSocketDebuggerUrl);
-    await cdp.send("Runtime.enable");
-    const evaluate = async (expression) => {
-      const { result, exceptionDetails } = await cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
-      if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
-      return result.value;
-    };
-    const shoot = async (name) => {
-      if (!screenshots) return;
-      const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
-      mkdirSync(screenshots, { recursive: true });
-      writeFileSync(join(screenshots, name), Buffer.from(data, "base64"));
-    };
-    const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
-
     // -- the taps: every tap of the learner goes through here and is counted
     let taps = 0;
     let scrolls = 0;
@@ -108,22 +56,6 @@ async function main() {
     };
     const block = (type, n = 0) => `window.bfEditor.workspace.getBlocksByType("bf_${type}", true)[${n}]`;
     const slot = (type, input, n = 0) => `${block(type, n)}.getInputTargetBlock("${input}")`;
-
-    const open = async (query) => {
-      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 360, height: 720, deviceScaleFactor: 2, mobile: true });
-      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-      await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/demo/phone.html${query}` });
-      for (let i = 0; i < 80; i += 1) {
-        await sleep(250);
-        try { if (await evaluate("window.bfReady === true")) return; } catch { /* loading */ }
-      }
-      throw new Error("the page did not start (is dist/ built? npm run build)");
-    };
-    const load = async (json) => {
-      await evaluate(`window.bfEditor.load(${JSON.stringify(json)})`);
-      await sleep(1200);
-    };
-    const python = () => evaluate("window.bfEditor.toPython()");
 
     // what must hold after every task (the pass mark's criteria 3, 5 and 6, and no block outside the column)
     const verify = async (label) => {
@@ -370,11 +302,7 @@ async function main() {
   } catch (error) {
     report.problems.push(String(error.stack ?? error));
   } finally {
-    cdp?.close();
-    browser.kill();
-    server.kill();
-    await sleep(1000);
-    try { rmSync(profile, { recursive: true, force: true }); } catch { /* Chrome still holds a file: left in the temp folder */ }
+    await page.stop();
   }
   console.log(JSON.stringify(report, null, 2));
   process.exit(report.problems.length ? 1 : 0);

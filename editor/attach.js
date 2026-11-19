@@ -13,6 +13,7 @@ import { FootBar } from "./foot.js";
 import { keepAboveKeyboard } from "./keyboard.js";
 import { SEARCH_CATEGORY } from "./blocks/register.js";
 import { attachHeld } from "./held.js";
+import { attachList } from "./list.js";
 
 const START_PAD = 12;      // Reset leaves this many px between the view's edge and the first block
 
@@ -20,8 +21,16 @@ const START_PAD = 12;      // Reset leaves this many px between the view's edge 
  * `frame` and `stage` (the phone layout) are the elements index.js made: the stage holds Blockly, the frame the stage and
  * the foot bar. `mode` is the mode to start in and `onMode(id)` hears of each change.
  */
-export function attach(workspace, { layout, frame = null, stage = null, scroller = null, catalogue = null, mode = "read", onMode = () => {} }) {
+export function attach(workspace, {
+  layout, frame = null, stage = null, scroller = null, rows = null, look = "blocks", catalogue = null, mode = "read", onMode = () => {},
+}) {
   const phone = layout === "phone";
+  if (layout === "phone-b") {
+    // Spike B of BF-D-053: the workspace has no page, so there is no column to keep: the rows are in the Python's order by construction
+    const held = attachList(workspace, { frame, scroller, list: rows, catalogue, look });
+    const column = { schedule() {}, settle: async () => {}, dispose() {} };
+    return { picker: null, modes: null, dock: null, find: null, column, held, sync() {}, reset() {}, dispose: () => held.dispose() };
+  }
   const column = new Column(workspace);
   workspace.bfColumn = column;            // a fold asks it to put the stacks in order again (fold.js)
   if (layout === "phone-a") {
