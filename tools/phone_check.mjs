@@ -85,12 +85,12 @@ async function main() {
         const size = (el) => { const r = el.getBoundingClientRect(); return Math.round(Math.min(r.width, r.height) * 10) / 10; };
         const chips = [...document.querySelectorAll(".bfl-chip")].filter(shown);
         const rows = [...document.querySelectorAll(".bfl-row")].filter(shown);
-        const parts = [...document.querySelectorAll(".bfp-sheet button, .bfp-bar button, .bfp-list button, .bfp-switch button, #host button")].filter(shown);
+        const parts = [...document.querySelectorAll(".bfp-sheet button, .bfp-bar button, .bfp-list button, #host button")].filter(shown);
         const outside = [...rows, ...chips].filter((el) => { const r = el.getBoundingClientRect(); return r.right > inner + 1 || r.left < -1; }).length;
         const texts = (root) => [...root.querySelectorAll("*")].filter((el) => shown(el) && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))
           .map((el) => parseFloat(getComputedStyle(el).fontSize));
         const rowText = texts(document.querySelector(".bfl-list"));
-        const partText = [".bfp-sheet", ".bfp-bar", ".bfp-list", ".bfl-top", "#host"].flatMap((q) => [...document.querySelectorAll(q)].filter(shown).flatMap(texts));
+        const partText = [".bfp-sheet", ".bfp-bar", ".bfp-list", "#host"].flatMap((q) => [...document.querySelectorAll(q)].filter(shown).flatMap(texts));
         return {
           python: editor.toPython(), expected: bf.toPython(editor.save()),
           docWidth: document.documentElement.scrollWidth, bodyWidth: document.body.scrollWidth, scrollerWidth: scroller.scrollWidth,
@@ -308,11 +308,9 @@ async function main() {
       return { ok: /def draw\(\):\n {4}f.background\("white"\)\n {4}for _ in range\(10\):\n {8}f.circle\(320, 200, 80\)\n/.test(code) && after - before === 4, blocksAdded: after - before, python: code };
     });
 
-    // tasks 1 and 2 again in the Python look: the switch is a tap in the list's top row, not part of the budget
+    // tasks 1 and 2 again in the Python look: the host chooses it (Play's "Show code" box), not part of the budget
     await load(timeBased);
-    await tapSel('[data-bf="look-code"]');
-    report.extras.switchMarks = await evaluate(`[...document.querySelectorAll(".bfp-switch button")].map((b) => b.textContent + "=" + b.getAttribute("aria-pressed")).join(" ")`);
-    report.extras.codeLookSwitch = await evaluate("window.bfEditor.look()");
+    report.extras.codeLook = await evaluate("window.bfEditor.look('code')");
     await shoot("phone_0_code.png");
     await task1("code");
     await task2("code");
@@ -331,7 +329,7 @@ async function main() {
       taps = closing;
       return { ok: lines[lines.indexOf('f.fill("seagreen")') + 1] === "f.circle(320, 200, 80)" && after === before + 1 };
     });
-    await tapSel('[data-bf="look-blocks"]');
+    await evaluate("window.bfEditor.look('blocks')");
 
     // the gear and the names (BF-16): an else added to the if, an input added to say, `delta time` picked from the list
     await load(timeBased);

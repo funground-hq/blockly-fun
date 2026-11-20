@@ -68,17 +68,43 @@ export function endOfSketch(workspace) {
   return null;
 }
 
-export const firstBody = (block) => block.inputList.find((i) => i.type === STATEMENT && i.connection)?.connection ?? null;
+/** The bodies of a C block (its statement inputs' connections), in the order the rows show them: an "if" with "else" has two. */
+export const bodiesOf = (block) => block.inputList.filter((i) => i.type === STATEMENT && i.connection).map((i) => i.connection);
+
+export const firstBody = (block) => bodiesOf(block)[0] ?? null;
+
+/** The last body of a C block: the one whose rows stand just above the block under it. */
+export const lastBody = (block) => bodiesOf(block).at(-1) ?? null;
+
+/** The body a statement is in: {parent, bodies, index} (index in bodiesOf(parent)), or null for a block in no C. */
+export function bodyOf(block) {
+  const parent = block.getSurroundParent();
+  if (!parent) return null;
+  let top = block;
+  while (top.getPreviousBlock() !== parent) top = top.getPreviousBlock();
+  const bodies = bodiesOf(parent);
+  const index = bodies.indexOf(top.previousConnection.targetConnection);
+  return index < 0 ? null : { parent, bodies, index };
+}
+
+/** Puts a lone block (one taken out) at the start of a body, before what is in it. */
+function putFirst(body, block) {
+  const first = body.targetBlock();
+  if (first) body.disconnect();
+  body.connect(block.previousConnection);
+  if (first) block.nextConnection.connect(first.previousConnection);
+}
 
 /** What can be done with a picked statement now (the bar greys the rest). */
 export function actionsFor(block) {
   const a = above(block);
   const next = block.getNextBlock();
+  const body = bodyOf(block);
   return {
     below: true,
-    up: a.kind === "sibling" || (a.kind === "parent" && !!a.block.previousConnection),
-    down: (!!next && !!next.nextConnection) || (!next && !!block.getSurroundParent()?.nextConnection),
-    in: a.kind === "sibling" && !!firstBody(a.block),
+    up: a.kind === "sibling" || (a.kind === "parent" && (body?.index > 0 || !!a.block.previousConnection)),
+    down: (!!next && !!next.nextConnection) || (!next && !!body && (body.index < body.bodies.length - 1 || !!body.parent.nextConnection)),
+    in: a.kind === "sibling" && !!lastBody(a.block),
     out: !!block.getSurroundParent()?.nextConnection,
     copy: !!block.nextConnection && !!block.previousConnection,
     delete: true,
@@ -116,11 +142,20 @@ function putAbove(block, before) {
   block.nextConnection.connect(before.previousConnection);
 }
 
-// Each move gives null when it was done, or a sentence saying why it cannot be.
+// Each move gives null when it was done, or a sentence saying why it cannot be. A move goes one row up or down the list, so it passes the
+// parts of a C block one by one: down from the last line of "if" is the first line of "else"; up from the first line of "else" is the
+// end of "if".
 
 export function moveUp(block) {
   const a = above(block);
   if (a.kind === "none") return MOVE_WORDS.first;
+  const body = a.kind === "parent" ? bodyOf(block) : null;
+  const before = body?.index > 0 ? endOf(body.bodies[body.index - 1]) : null;
+  if (before) {                                     // the first line of a later part: to the end of the part above
+    takeOut(block);
+    before.connect(block.previousConnection);
+    return null;
+  }
   if (a.kind === "parent" && !a.block.previousConnection) return MOVE_WORDS.first;
   takeOut(block);
   putAbove(block, a.block);          // above the sibling it passes, or above the parent it leaves
@@ -129,24 +164,30 @@ export function moveUp(block) {
 
 export function moveDown(block) {
   const next = block.getNextBlock();
-  const parent = block.getSurroundParent();
   if (next) {
     if (!next.nextConnection) return MOVE_WORDS.last;
     takeOut(block);
     next.nextConnection.connect(block.previousConnection);
     return null;
   }
-  if (parent?.nextConnection) {                     // the last line of a C: it leaves the C, below it
+  const body = bodyOf(block);
+  if (body && body.index < body.bodies.length - 1) {     // the last line of a part with another under it: to the start of that one
     takeOut(block);
-    parent.nextConnection.connect(block.previousConnection);
+    putFirst(body.bodies[body.index + 1], block);
+    return null;
+  }
+  if (body?.parent.nextConnection) {                // the last line of a C: it leaves the C, below it
+    takeOut(block);
+    body.parent.nextConnection.connect(block.previousConnection);
     return null;
   }
   return MOVE_WORDS.last;
 }
 
+/** Into the C block above it, at the end of the C's last part: the rows just above the block are that part's. */
 export function moveIn(block) {
   const a = above(block);
-  const body = a.kind === "sibling" ? firstBody(a.block) : null;
+  const body = a.kind === "sibling" ? lastBody(a.block) : null;
   if (!body) return MOVE_WORDS.noRoom;
   const end = endOf(body);
   if (!end) return MOVE_WORDS.noRoom;

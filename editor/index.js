@@ -8,7 +8,7 @@
 //   editor.layout("phone");                                  // the list of lines for a phone (BF-D-053); "wide" is Blockly's own page
 //   editor.undo(); editor.redo();                            // take back, and do again; true if there was something to do
 //   editor.canUndo(); editor.canRedo();                      // for the host's two buttons; onHistory() says when to ask again
-//   editor.look(); editor.look("code");                      // phone layout: how the lines are shown, "blocks" or "code" (a switch in the list does the same)
+//   editor.look(); editor.look("code");                      // phone layout: how the lines are shown, "blocks" or "code"
 //   editor.markError(line, message); editor.clearErrors();   // phone layout: the line of the Python that went wrong, marked on its row
 //   toPython(workspaceJson);                                 // the same, with no page (tests, tools)
 //
@@ -30,7 +30,7 @@
 //   phone: no Blockly page (list.js). The program is a list of rows drawn as HTML, over a plain Blockly workspace that holds the model,
 //          the undo history and the Python generator. A tap picks a row (a bar at the foot moves, copies, deletes, wraps and changes
 //          the block's inputs) or opens a sheet for a value; nothing is dragged and the page scrolls. The rows have two looks, Blocks
-//          (colours, Scratch's words) and Code (the Python line), with a switch in the list's top row.
+//          (colours, Scratch's words) and Code (the Python line); the host chooses with editor.look().
 
 import * as Blockly from "blockly";
 import {
@@ -211,7 +211,7 @@ export function createBlocksEditor({
     renderStats: () => touch?.list?.stats() ?? null,
     /**
      * Phone layout: how the rows are shown, "blocks" (colours and Scratch's words) or "code" (the Python line); with a name, changes it
-     * (the switch in the list's top row shows it). Gives null in the wide layout.
+     * (the host's own control: the list has none). Gives null in the wide layout.
      */
     look(next) {
       if (layout !== "phone") return null;

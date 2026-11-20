@@ -5,7 +5,8 @@
 //   - the words are the block's own (rows.js reads them from the block's inputs), each value a chip, a nested value a chip with chips in it;
 //     rows wrap within the screen, text is 15 px and every chip's tap area is 44 px high at least;
 //   - two looks of the same rows: "blocks" (colours, Scratch's words) and "code" (the Python line, the same chips over its values),
-//     chosen by a switch in the top row, "Blocks | Python" (phone/switch.js);
+//     chosen by the host (editor.look(); Play has a "Show code" box by the file's name). The list has no top row of its own: a row of
+//     buttons there took 54 px of a phone's height, and its "Python" was taken for the Code view (the maintainer's phone pass, 20 Nov);
 //   - a tap on a row picks its block (the bar at the foot: phone/bar.js, with the changes of the block's gear: phone/gear.js), a tap on a
 //     chip opens the sheet for that value (the slot sheet, a list of choices, a grid of colours, the catalogue's names, or the keyboard
 //     for words), a tap on an empty body opens the block list.
@@ -26,10 +27,9 @@ import { labelOf, openBlockList, rowsFor } from "./phone/blocklist.js";
 import { blockAtLine } from "./phone/lines.js";
 import { actionsFor, addAt, duplicate, firstBody, inOneStep, moveDown, moveIn, moveOut, moveUp, remove, wrapIn } from "./phone/moves.js";
 import { openChoiceSheet, openNameSheet, openTextSheet } from "./phone/pickers.js";
-import { describeProgram, LOOK_WORDS, LOOKS, textOfParts } from "./phone/rows.js";
+import { describeProgram, LOOKS, textOfParts } from "./phone/rows.js";
 import { Recent } from "./phone/slots.js";
 import { addPhoneStyle, make } from "./phone/style.js";
-import { createLookSwitch } from "./phone/switch.js";
 import { createValueSheets } from "./phone/valuesheet.js";
 
 export const WORDS = {
@@ -39,13 +39,9 @@ export const WORDS = {
   nothing: "No blocks yet. Tap + Add a block.",
 };
 
-const TOP = 54;       // the top row: 44 px buttons and a little room
-
 const STYLE = `
 .bfl-frame { position: relative; box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; font-family: var(--body, system-ui, sans-serif); color: var(--ink, #191970); }
-.bfl-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; box-sizing: border-box; display: flex; align-items: center; justify-content: flex-end; padding: 4px 6px;
-  background: var(--panel, #fffaf0); border-bottom: 1.5px solid var(--ink, #191970); }
-.bfl-scroll { position: absolute; inset: ${TOP}px 0 0 0; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; background: var(--panel, #fffaf0); }
+.bfl-scroll { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; background: var(--panel, #fffaf0); }
 .bfl-list { box-sizing: border-box; padding: 8px 6px 12px; }
 .bfl-row { display: flex; align-items: stretch; box-sizing: border-box; min-height: 52px; margin: 0; border-bottom: 1.5px solid rgba(0, 0, 0, 0.22);
   background: var(--kind); color: var(--on); font-size: 15px; line-height: 1.3; touch-action: manipulation; cursor: pointer; -webkit-user-select: none; user-select: none; }
@@ -96,7 +92,7 @@ function addListStyle() {
   document.head.appendChild(style);
 }
 
-/** The page parts of the layout: a frame, a scroller (the page scrolls up and down) and the list of rows in it. The top row is added by attachList. */
+/** The page parts of the layout: a frame, a scroller (the page scrolls up and down) and the list of rows in it. */
 export function makeListFrame(element) {
   addListStyle();
   const frame = make("div", "bfl-frame");
@@ -113,7 +109,7 @@ const VALUE = Blockly.inputs.inputTypes.VALUE;
 /**
  * Makes `workspace` (a plain Blockly workspace) a list of rows in `list`. `catalogue` is the catalogue index or null.
  * Gives {pick, picked, look, markError, clearErrors, closeSheet, render, stats, refresh, dispose}.
- * `onLook(look)` hears each change of the look, whoever made it (the switch, or the host through look()).
+ * `onLook(look)` hears each change of the look, made by the host through look().
  */
 export function attachList(workspace, { frame, scroller, list, catalogue = null, look = "blocks", onLook = () => {} }) {
   const recent = new Recent();
@@ -131,9 +127,6 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
   const tools = {};
 
   const bar = new ActionBar(frame);
-  const top = make("div", "bfl-top");
-  const switcher = createLookSwitch(top, { looks: LOOK_WORDS, current: look, onChoose: (next) => tools.look(next) });
-  frame.append(top);
 
   // -- fitting: room for the bar and the sheet at the foot ---------------------------------------------------------------
 
@@ -522,7 +515,6 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
         render();
         onLook(current);
       }
-      switcher.show(current);
       return current;
     },
     dispose() {
@@ -532,7 +524,6 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
       closeSheets();
       closeAddList();
       bar.dispose();
-      top.remove();
     },
   });
   return tools;

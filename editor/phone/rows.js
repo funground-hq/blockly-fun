@@ -32,9 +32,6 @@ const VALUE = Blockly.inputs.inputTypes.VALUE;
 
 export const LOOKS = ["blocks", "code"];
 
-/** What the switch in the list's top row calls each look. */
-export const LOOK_WORDS = { blocks: "Blocks", code: "Python" };
-
 const defOf = (block) => BY_TYPE[block.type.slice(PREFIX.length)];
 const word = (text) => ({ type: "word", text });
 

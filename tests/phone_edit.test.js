@@ -1,4 +1,4 @@
-// BF-16 (BF-D-053): the phone layout's switch of look, the changes of a block's gear in the bar, and the catalogue's names in a sheet.
+// BF-16 (BF-D-053): the phone layout's look (chosen by the host), the changes of a block's gear in the bar, and the catalogue's names in a sheet.
 // All through the host API in jsdom (no real layout: sizes and taps are tools/phone_check.mjs's).
 
 import { test } from "node:test";
@@ -51,50 +51,41 @@ async function tapGear(editor, element, name) {
 const gearState = (element) => Object.fromEntries([...element.querySelectorAll('[data-bf^="gear-"]')].map((b) => [b.dataset.bf.slice(5), !b.disabled]));
 
 // ---------------------------------------------------------------------------------------------------------------
-// The switch of look
+// The look
 
-test("the top row has a switch, Blocks and Python, 44 px buttons, the current one marked", async () => {
+test("the list has no top row of its own: the rows start at the top, and the host chooses the look", async () => {
   await withEditor(async (editor, element) => {
     editor.load(timeBased);
     await later();
-    const buttons = [...element.querySelectorAll(".bfp-switch button")];
-    assert.deepEqual(buttons.map((b) => b.textContent), ["Blocks", "Python"]);
-    assert.deepEqual(buttons.map((b) => b.getAttribute("aria-pressed")), ["true", "false"]);
-    assert.equal(element.querySelector(".bfl-top .bfp-switch") !== null, true, "the switch is in the top row");
+    assert.equal(element.querySelector(".bfl-top, .bfp-switch, [data-bf^=\"look-\"]"), null, "no switch in the list");
+    assert.equal(editor.look(), "blocks", "the rows start in the Blocks look");
   });
 });
 
-test("a tap on Python shows the Python lines; a tap on Blocks brings the blocks back; the program does not change", async () => {
+test("editor.look(\"code\") shows the Python lines; editor.look(\"blocks\") brings the blocks back; the program does not change", async () => {
   await withEditor(async (editor, element) => {
     editor.load(timeBased);
     await later();
     const before = editor.toPython();
     const blocks = [...element.querySelectorAll(".bfl-row")].map((r) => r.getAttribute("aria-label"));
-    bf(element, "look-code").click();
+    assert.equal(editor.look("code"), "code");
     await later();
-    assert.equal(editor.look(), "code");
     assert.ok(element.querySelector(".bfl-list").classList.contains("bfl-code"));
-    assert.deepEqual([...element.querySelectorAll(".bfp-switch button")].map((b) => b.getAttribute("aria-pressed")), ["false", "true"]);
     assert.ok([...element.querySelectorAll(".bfl-row")].some((r) => r.getAttribute("aria-label") === "f.circle(x, f.height / 2, 80)"));
-    bf(element, "look-blocks").click();
+    assert.equal(editor.look("blocks"), "blocks");
     await later();
-    assert.equal(editor.look(), "blocks");
     assert.deepEqual([...element.querySelectorAll(".bfl-row")].map((r) => r.getAttribute("aria-label")), blocks);
     assert.equal(editor.toPython(), before);
     assert.equal(editor.canUndo(), false, "a look is not a step to undo");
   });
 });
 
-test("editor.look() from the host moves the switch, and the look is kept when the editor draws itself again", async () => {
+test("the look is kept when the editor draws itself again", async () => {
   await withEditor(async (editor, element) => {
     editor.look("code");
-    assert.deepEqual([...element.querySelectorAll(".bfp-switch button")].map((b) => b.getAttribute("aria-pressed")), ["false", "true"]);
-    bf(element, "look-blocks").click();
-    bf(element, "look-code").click();                     // the switch, not the host, made this look
     editor.settings({ words: "python" });
     assert.equal(editor.look(), "code");
-    assert.deepEqual([...element.querySelectorAll(".bfp-switch button")].map((b) => b.getAttribute("aria-pressed")), ["false", "true"]);
-    assert.equal(element.querySelectorAll(".bfp-switch").length, 1, "one switch, not one for each drawing");
+    assert.ok(element.querySelector(".bfl-list").classList.contains("bfl-code"));
   });
 });
 

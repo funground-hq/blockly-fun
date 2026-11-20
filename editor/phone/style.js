@@ -6,7 +6,7 @@ export const TARGET = 44;
 
 const STYLE = `
 .bfp-sheet, .bfp-list, .bfp-bar { box-sizing: border-box; font-family: var(--body, system-ui, sans-serif); color: var(--ink, #191970); }
-.bfp-sheet button, .bfp-list button, .bfp-bar button, .bfp-switch button { font: 600 15px var(--body, system-ui, sans-serif); color: inherit; min-height: ${TARGET}px; min-width: ${TARGET}px;
+.bfp-sheet button, .bfp-list button, .bfp-bar button { font: 600 15px var(--body, system-ui, sans-serif); color: inherit; min-height: ${TARGET}px; min-width: ${TARGET}px;
   padding: 0 10px; border: 1.5px solid var(--ink, #191970); border-radius: 10px; background: var(--paper, #fdf6e7); touch-action: manipulation; cursor: pointer; }
 .bfp-sheet button:disabled, .bfp-bar button:disabled { opacity: 0.4; }
 .bfp-sheet button:focus-visible, .bfp-list button:focus-visible, .bfp-bar button:focus-visible { outline: 3px solid var(--gold, #ffd700); outline-offset: 2px; }
@@ -46,8 +46,6 @@ const STYLE = `
 .bfp-names .bfp-name-row[aria-selected="true"] { background: var(--ink, #191970); color: var(--paper, #fdf6e7); }
 .bfp-names .bfp-name-row[aria-selected="true"] .bfp-name-plain { color: inherit; }
 
-.bfp-switch { display: flex; gap: 6px; }
-.bfp-switch button[aria-pressed="true"] { background: var(--ink, #191970); color: var(--paper, #fdf6e7); }
 
 .bfp-list { position: absolute; inset: 0; z-index: 110; display: flex; flex-direction: column; background: var(--panel, #fffaf0); }
 .bfp-find { display: flex; gap: 6px; padding: 8px; border-bottom: 2px solid var(--ink, #191970); }

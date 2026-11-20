@@ -221,6 +221,26 @@ test("up, down, in, out move one line and the Python follows", () => {
   });
 });
 
+test("moves pass the parts of an if one row at a time: into the else from below, down into the else, up into the if", () => {
+  const ifElse = program([s.if([[v.gt(x("a"), 1), [s.say(t("big"))]]], [s.say(t("small"))]), s.say(t("after"))]);
+  withWorkspace(ifElse, (workspace) => {
+    const say = (word) => workspace.getBlocksByType(typeOf("say"), false).find((b) => b.getInputTargetBlock("ARG0").getFieldValue("TEXT") === word);
+    const after = say("after");
+    assert.equal(actionsFor(after).in, true);
+    assert.equal(moveIn(after), null);                 // the rows above it are the else's
+    assert.match(python(workspace), /else:\n {4}print\("small"\)\n {4}print\("after"\)\n$/);
+    const big = say("big");
+    assert.equal(actionsFor(big).down, true);
+    assert.equal(moveDown(big), null);                 // the last line of the if part: to the top of the else part
+    assert.match(python(workspace), /if a > 1:\n {4}pass\nelse:\n {4}print\("big"\)\n {4}print\("small"\)/);
+    assert.equal(actionsFor(big).up, true);
+    assert.equal(moveUp(big), null);                   // the first line of the else: back to the end of the if part
+    assert.match(python(workspace), /if a > 1:\n {4}print\("big"\)\nelse:\n {4}print\("small"\)/);
+    assert.equal(moveDown(say("after")), null);        // the last line of the last part: out of the if, below it
+    assert.match(python(workspace), /else:\n {4}print\("small"\)\nprint\("after"\)\n$/);
+  });
+});
+
 test("a move that cannot be done says why, and changes nothing", () => {
   withWorkspace(timeBased, (workspace) => {
     const before = python(workspace);
