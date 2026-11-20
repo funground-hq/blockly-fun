@@ -7,9 +7,8 @@
 
 import * as Blockly from "blockly";
 import { NamePanel } from "./panel.js";
-import { importsOf, isAttributeBlock, isBareCall, isMethodBlock, lookupEntry } from "./call_block.js";
+import { isBareCall, lookupEntry, nameScope } from "./call_block.js";
 import { kitFor } from "./kit.js";
-import { staticType } from "./types.js";
 import { writesOnFinish } from "../blocks/finish.js";
 
 export class FieldCatalogueName extends writesOnFinish(Blockly.FieldTextInput) {
@@ -67,17 +66,10 @@ export class FieldCatalogueName extends writesOnFinish(Blockly.FieldTextInput) {
 
   openList(document) {
     const block = this.getSourceBlock();
-    const bare = isBareCall(block);
-    if (!bare && !isMethodBlock(block)) return;
     const { catalogue } = this.context;
-    let scope;
-    if (bare) {
-      scope = catalogue.bareScope(importsOf(block, true));   // Python's built-ins and what the sketch imports
-    } else {
-      const tracker = block.workspace.bfTypes;
-      const type = tracker ? tracker.objectType(block) : staticType(block, catalogue);
-      scope = catalogue.scope(type, { properties: isAttributeBlock(block) });
-    }
+    const scope = nameScope(block, catalogue);
+    if (!scope) return;
+    const bare = isBareCall(block);
     // a bare name has no kit block (the kit blocks write `f.name`), so its rows do not say so
     this.panel = new NamePanel({
       document, catalogue, scope, name: this.getValue(), kitOf: bare ? () => null : kitFor, onChoose: (entry) => this.choose(entry),
@@ -105,6 +97,12 @@ export class FieldCatalogueName extends writesOnFinish(Blockly.FieldTextInput) {
       event.preventDefault();
       this.choose(entry);
     } else super.onHtmlInputKeyDown_(event);   // Escape is Blockly's: the name as it was, the list closed
+  }
+
+  /** Puts the entry's name in and lets the block build its slots, with no editor open (the phone's name sheet). */
+  select(entry) {
+    this.setValue(entry.name);
+    this.context.onChoose(this.getSourceBlock(), entry);
   }
 
   /** Puts the entry's name in, closes the list, and lets the block build its slots. */

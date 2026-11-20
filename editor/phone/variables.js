@@ -1,4 +1,4 @@
-// A new variable (BF-D-053, both spikes): asks a name, adds `name = 0` where module-level variables go, and gives the variable to
+// A new variable (BF-D-053): asks a name, adds `name = 0` where module-level variables go, and gives the variable to
 // the slot that asked. Where they go is the generator's order: the top stacks are written top to bottom, so a variable is set at
 // the top, before the hats and the functions (and below the header, which is written above the imports).
 

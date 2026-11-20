@@ -1,4 +1,4 @@
-// The toolbox as a column of icons (BF-D-041), or on a phone a row of them (BF-15, BF-D-049). Each category shows one small picture in its own colour; its name is the
+// The toolbox as a column of icons (BF-D-041). Each category shows one small picture in its own colour; its name is the
 // tooltip (title) and the accessible name (aria-label). There is no text label.
 //
 // How: a subclass of Blockly's own ToolboxCategory, registered in its place (the supported way to customise a category,
@@ -77,27 +77,11 @@ export class IconCategory extends Blockly.ToolboxCategory {
 
 // Blockly's names: the container holds a row (blocklyToolboxCategory) that holds the icon.
 const CSS = `
-.injectionDiv:not(.bf-phone) .blocklyToolbox { width: 46px; }
+.injectionDiv .blocklyToolbox { width: 46px; }
 .injectionDiv .blocklyToolboxCategory { display: flex; align-items: center; justify-content: center; height: 40px; margin: 0; padding: 0; }
 .injectionDiv .blocklyTreeRowContentContainer { display: flex; }
 .injectionDiv .bf-kit-icon { display: flex; color: var(--bf-kit); }
 .injectionDiv .blocklyToolboxSelected .bf-kit-icon { color: #fff; }
-/* The phone layout (BF-15, BF-D-051): one row along the bottom, as the mock-up's .kinds. Each kind is a 44 by 40 px outlined
-   button on the rail colour (the page's --rail, --ink, --panel; the mock-up's values when it has none); the chosen one is green.
-   The row scrolls sideways by touch, and the half button at its edge shows that there are more. */
-.injectionDiv.bf-phone .blocklyToolbox { overflow-x: auto; overflow-y: hidden; touch-action: pan-x; scrollbar-width: none; box-sizing: border-box;
-  padding: 6px; background: var(--rail, #efe6d2); border-top: 1.5px solid var(--ink, #191970); }
-.injectionDiv.bf-phone .blocklyToolbox::-webkit-scrollbar { display: none; }
-.injectionDiv.bf-phone .blocklyScrollbarVertical, .injectionDiv.bf-phone .blocklyScrollbarHorizontal { pointer-events: none; }
-.injectionDiv.bf-phone .blocklyScrollbarHandle { fill: var(--muted, #6b6b8a); opacity: .3; }
-.injectionDiv.bf-phone .blocklyScrollbarBackground { fill: none; }
-.injectionDiv.bf-phone .blocklyToolboxCategoryGroup { flex-wrap: nowrap; gap: 4px; }
-.injectionDiv.bf-phone .blocklyToolboxCategoryContainer { flex: none; margin: 0; }
-.injectionDiv.bf-phone .blocklyToolboxCategory { width: 44px; height: 40px; box-sizing: border-box; border: 1.5px solid var(--ink, #191970);
-  border-radius: 8px; background-color: var(--panel, #fffaf0); }
-.injectionDiv.bf-phone .bf-kit-icon { color: var(--ink, #191970); }
-.injectionDiv.bf-phone .blocklyToolboxSelected { background-color: var(--block-shape, #0fbd8c) !important; }
-.injectionDiv.bf-phone .blocklyToolboxSelected .bf-kit-icon { color: #fff; }
 `;
 
 let done = false;

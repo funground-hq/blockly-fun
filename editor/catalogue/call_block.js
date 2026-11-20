@@ -67,6 +67,18 @@ export function lookupEntry(block, catalogue, fresh = false) {
   return type ? catalogue.member(type, name) : catalogue.onlyMember(name);
 }
 
+/**
+ * What a name list offers for a block (catalogue.scope: {known, groups}): Python's own and the imported names for a bare call,
+ * else the members of the object's type. Null for a block that has no name list. The types are worked out fresh.
+ */
+export function nameScope(block, catalogue) {
+  if (isBareCall(block)) return catalogue.bareScope(importsOf(block, true));
+  if (!isMethodBlock(block)) return null;
+  const tracker = block.workspace.bfTypes;
+  const type = tracker ? tracker.objectType(block) : staticType(block, catalogue);
+  return catalogue.scope(type, { properties: isAttributeBlock(block) });
+}
+
 /** The tooltip: the signature, then the plain sentence (or the summary). */
 export function tooltipOf(entry) {
   return `${entry.signature}\n${entry.plain}`.trim();

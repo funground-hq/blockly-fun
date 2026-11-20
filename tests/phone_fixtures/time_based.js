@@ -1,5 +1,5 @@
-// The Time-based motion example of funground's gallery (animation/02_time_based.py), as blocks, for the phone spikes of
-// BF-D-053 (tools/spike_a_check.mjs). The Python it stands for, without the header:
+// The Time-based motion example of funground's gallery (animation/02_time_based.py), as blocks, for the phone layout of
+// BF-D-053 (tools/phone_check.mjs). The Python it stands for, without the header:
 //
 //   import funground as f
 //
@@ -14,7 +14,7 @@
 //       global x
 //       f.background("white")
 //       f.fill("seagreen")
-//       f.circle(x, f.height / 2, 80)         # the gallery's circle is 60; the spike's tasks start from 80 (task 1: 80 to 120)
+//       f.circle(x, f.height / 2, 80)         # the gallery's circle is 60; the phone check's tasks start from 80 (task 1: 80 to 120)
 //       x += 150 * f.delta_time
 //       if x > f.width:
 //           x = 0

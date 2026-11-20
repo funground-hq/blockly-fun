@@ -1,6 +1,6 @@
-// What happens when a value is tapped (BF-D-053, both spikes): the slot sheet (sheet.js) opened for a value block in a slot, and what
-// each choice in it does to the blocks. Spike A calls it from Blockly's own click, spike B from a chip in a row. It does not know
-// which: it is given the workspace, the page part to open over and the catalogue, and it works on Blockly blocks.
+// What happens when a value is tapped (BF-D-053): the slot sheet (sheet.js) opened for a value block in a slot, and what each choice in it
+// does to the blocks. The list calls it from a chip in a row. It is given the workspace, the page part to open over and the catalogue,
+// and it works on Blockly blocks.
 //
 // A sheet session is one step to undo (an event group opened with the sheet and closed with it).
 
@@ -8,6 +8,7 @@ import * as Blockly from "blockly";
 import { toolboxBlock, typeOf } from "../blocks/register.js";
 import { numberEditor, slotParam } from "../editors/slots.js";
 import { openBlockList, rowsFor } from "./blocklist.js";
+import { applyGear, gearFor } from "./gear.js";
 import { openSheet } from "./sheet.js";
 import { variablesInScope, wrapInOperator } from "./slots.js";
 import { addVariable, checkName, moduleNames, topStacks } from "./variables.js";
@@ -86,8 +87,10 @@ export function createValueSheets(workspace, { host, catalogue, recent, onOpen =
       range,
       variables: scopeFor(block ?? slot.getSourceBlock()),
       recent: recent.list(),
+      gear: block ? gearFor(block) : [],
       on: {
         number: setNumber,
+        gear: (id) => { applyGear(block, id); sheet.update(specFor()); },
         variable: setVariable,
         operator: setOperator,
         newName: newVariable,

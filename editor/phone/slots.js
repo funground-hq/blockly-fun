@@ -1,5 +1,5 @@
-// What a tap on a value offers (BF-D-053, both spikes). Pure functions: no page, no Blockly. The sheet (sheet.js) draws what they say,
-// and a host that is not Blockly (spike B's rows) passes in the same plain data.
+// What a tap on a value offers (BF-D-053). Pure functions: no page, no Blockly. The sheet (sheet.js) draws what they say,
+// and a host that is not Blockly (the list's rows) passes in the same plain data.
 //
 // A slot is one of four kinds:
 //   "number"      a number: a slider, a number pad, the variables, + - x /, "new variable", the last few numbers used

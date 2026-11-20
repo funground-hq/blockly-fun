@@ -81,11 +81,11 @@ export function findBlocks(query, workspace = null) {
  * Registers the flyout's contents for the search category and returns what the page needs: `query(text)` sets the
  * words and shows the matches again.
  */
-export function attachFind(workspace, { layout }) {
+export function attachFind(workspace) {
   let text = "";
   workspace.registerToolboxCategoryCallback(SEARCH_CATEGORY, (ws) => {
-    // in the wide layout the flyout is a column and the search box is laid over its top: a gap keeps the blocks clear of it
-    const gap = layout === "wide" ? [{ kind: "sep", gap: "44" }] : [];
+    // the flyout is a column and the search box is laid over its top: a gap keeps the blocks clear of it
+    const gap = [{ kind: "sep", gap: "44" }];
     const found = findBlocks(text, ws);
     if (found.length) return [...gap, ...found.map((b) => ({ kind: "block", ...b }))];
     return [...gap, { kind: "label", text: text.trim() ? NOTHING : HINT }];

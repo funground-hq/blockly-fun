@@ -1,6 +1,6 @@
-// The slot sheet (BF-D-053, both spikes): a sheet from the bottom of the screen, opened by a tap on a value. It shows what the
-// slot can take (slots.js says what) and tells the host at once about each choice, so the host can apply it and redraw (Auto-run).
-// No Blockly in here: the host passes in data and callbacks, and spike B's rows use it as spike A's blocks do.
+// The slot sheet (BF-D-053): a sheet from the bottom of the screen, opened by a tap on a value. It shows what the slot can take
+// (slots.js says what) and tells the host at once about each choice, so the host can apply it and redraw (Auto-run).
+// No Blockly in here: the host passes in data and callbacks.
 //
 //   const sheet = openSheet(host, {
 //     title: "size",                       // what is being changed, a few words
@@ -9,12 +9,14 @@
 //     range: {low: 0, high: 640, step: 1}, // the slider's range, when the catalogue knows one
 //     variables: [{name, label, group}],   // the variables in scope (slots.js: variablesInScope)
 //     recent: [60, 120],                   // the last few numbers used
+//     gear: [{id, label, enabled}],        // optional: the changes of a value that has a gear (a list, a call: + input, - input; gear.js)
 //     on: {
 //       number(n),                         // the number changed (slider, pad or a recent one)
 //       variable(entry),                   // a variable was chosen
 //       operator(op),                      // "+", "-", "*" or "/": the slot becomes [old] op [ ]; the host then calls update()
 //       newName(text),                     // a name for a new variable: {ok: true} or {ok: false, message}
 //       more(),                            // optional: "Other blocks" (the block list)
+//       gear(id),                          // optional: a gear button was tapped; the host then calls update()
 //       done(),                            // Done was tapped
 //     },
 //   });
@@ -36,6 +38,7 @@ export const WORDS = {
   nameLabel: "Name of the new variable",
   variables: "Variables",
   recent: "Last used",
+  inputs: "Inputs",
   none: "empty",
 };
 
@@ -139,6 +142,16 @@ export function openSheet(host, initial) {
     if (offer.newVariable) row.append(button(WORDS.newVariable, "new-variable", () => drawName(), "bfp-chip"));
     if (offer.pad && spec.on.more) row.append(button(WORDS.more, "more", () => spec.on.more(), "bfp-chip"));
     root.append(row);
+    if (spec.gear?.length) {
+      const inputs = make("div", "bfp-row");
+      inputs.append(make("p", "bfp-label", WORDS.inputs));
+      for (const part of spec.gear) {
+        const b = button(part.label, `gear-${part.id}`, () => spec.on.gear(part.id), "bfp-chip");
+        b.disabled = !part.enabled;
+        inputs.append(b);
+      }
+      root.append(inputs);
+    }
   }
 
   function press(key) {

@@ -1,9 +1,8 @@
-// The search box stays above the phone's keyboard (BF-D-051). When the on-screen keyboard opens, a phone browser usually
+// The list's sheets and bar stay above the phone's keyboard (BF-D-051). When the on-screen keyboard opens, a phone browser usually
 // does not shrink the page: it shrinks the "visual viewport" (what is seen) and leaves the "layout viewport" (what the page is
-// laid out in) alone, so a box at the foot of the page ends up under the keys. This watches the visual viewport
+// laid out in) alone, so a sheet at the foot of the page ends up under the keys. This watches the visual viewport
 // (window.visualViewport: its resize and scroll events) and, while the keyboard is up, leaves the editor's frame room at its
-// foot as tall as the part the keyboard covers. The blocks, the row of kinds, the list of blocks and the search box (all inside
-// the frame) are then above the keys, and the foot bar steps out of the way (a class on the frame hides it).
+// foot as tall as the part the keyboard covers. The rows, the bar and the sheets (all inside the frame) are then above the keys.
 //
 // A page that asks for its layout to shrink with the keyboard (the viewport's "interactive-widget=resizes-content") needs none
 // of this: the frame is then already above the keyboard, and the part covered is zero.

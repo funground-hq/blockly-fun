@@ -1,6 +1,6 @@
-// BF-D-053, spike A and the parts spike B reuses: what the slot sheet offers, an operator wrapping a slot, where a new variable
+// BF-D-053: the parts of the phone layout: what the slot sheet offers, an operator wrapping a slot, where a new variable
 // goes, the phone's scope of blocks, the block list's search, and which block wrote which line. All pure or headless (no page);
-// the page itself is checked by tools/spike_a_check.mjs.
+// the page itself is checked by tools/phone_check.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,8 @@ import {
 } from "../editor/phone/slots.js";
 import { addVariable, checkName, variablePlace } from "../editor/phone/variables.js";
 import { BASICS, LEFT_OUT, PER_KIND, labelOf, matching, phoneScope, rankOfBlock, rowsFor } from "../editor/phone/blocklist.js";
-import { actionsFor, blockLines, matchLines } from "../editor/held.js";
+import { actionsFor } from "../editor/phone/moves.js";
+import { blockLines, matchLines } from "../editor/phone/lines.js";
 import { stmt as s, val as v, text as t, name as x, program } from "./dsl.js";
 import timeBased from "./phone_fixtures/time_based.js";
 

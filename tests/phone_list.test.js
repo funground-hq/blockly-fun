@@ -1,5 +1,5 @@
-// BF-D-053, spike B: the "phone-b" layout through the host API, in jsdom (no real layout, so sizes and taps are the browser check's:
-// tools/spike_b_check.mjs). The editor has no Blockly page: its workspace is a plain one, the rows are HTML, and the API is the other layouts'.
+// BF-D-053: the "phone" layout through the host API, in jsdom (no real layout, so sizes and taps are the browser check's:
+// tools/phone_check.mjs). The editor has no Blockly page: its workspace is a plain one, the rows are HTML, and the API is the other layouts'.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,14 +12,14 @@ import timeBased from "./phone_fixtures/time_based.js";
 
 const later = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-/** An editor in the phone-b layout on a page of jsdom, for the length of fn; the page globals go away after. */
+/** An editor in the phone layout on a page of jsdom, for the length of fn; the page globals go away after. */
 async function withEditor(fn, options = {}) {
   const dom = new JSDOM("<!doctype html><body></body>");
   globalThis.document = dom.window.document;
   const element = document.createElement("div");
   document.body.append(element);
   const changes = [];
-  const editor = createBlocksEditor({ element, layout: "phone-b", onChange: (code) => changes.push(code), ...options });
+  const editor = createBlocksEditor({ element, layout: "phone", onChange: (code) => changes.push(code), ...options });
   try {
     return await fn(editor, element, changes);
   } finally {
@@ -32,7 +32,7 @@ const rows = (element) => [...element.querySelectorAll(".bfl-row")];
 
 test("the editor draws the program as rows, one for each line, and the Python is the generator's", async () => {
   await withEditor(async (editor, element) => {
-    assert.equal(editor.layout(), "phone-b");
+    assert.equal(editor.layout(), "phone");
     editor.load(timeBased);
     await later();
     assert.equal(rows(element).length, 10);
@@ -120,7 +120,7 @@ test("Python becomes rows: fromPython loads what the converter gives, in the Pyt
   }, { convert });
 });
 
-test("the render statistics count the drawings of the rows, for the spike's measurements", async () => {
+test("the render statistics count the drawings of the rows, for the checks", async () => {
   await withEditor(async (editor) => {
     assert.ok(editor.renderStats().renders >= 1);
     assert.ok(editor.renderStats().rows >= 0);

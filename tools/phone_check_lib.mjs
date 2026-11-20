@@ -1,4 +1,4 @@
-// The parts the two phone spikes' checks share (BF-D-053: tools/spike_a_check.mjs, tools/spike_b_check.mjs): a page server, a headless Chrome
+// The parts the phone check shares with a page driver (BF-D-053: tools/phone_check.mjs): a page server, a headless Chrome
 // driven over the DevTools protocol with a 360 x 720 touch screen, and the helpers to run a script in the page, touch, take a screenshot.
 // Environment: BF_PYTHON (python.exe, for tools/serve.py), BF_CHROME (chrome.exe).
 

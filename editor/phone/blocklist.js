@@ -1,4 +1,4 @@
-// The block list (BF-D-053, both spikes): a full-width list over the editor, one block per row (its words, and a small mark in
+// The block list (BF-D-053): a full-width list over the editor, one block per row (its words, and a small mark in
 // the colour of its kind), most used first, a search box at the top and a few chips for the kinds. A tap on a row chooses the
 // block; the caller decides where it goes. No Blockly in the page part: the rows are plain data.
 //
@@ -9,7 +9,7 @@ import { BLOCKS, CATEGORIES } from "../blocks/table.js";
 import { haystack, tierOf } from "../find.js";
 import { addPhoneStyle, ignoreGhostClick, make } from "./style.js";
 
-/** How many blocks of each kind the phone offers, most used first. The cut is measured: see the spike's RESULTS. */
+/** How many blocks of each kind the phone offers, most used first. The cut was measured in the spike (BF-D-053). */
 export const PER_KIND = 5;
 
 /** The blocks a sketch cannot do without, offered whatever their rank: repeat, count, if, set, change, variables, maths, comparisons. */

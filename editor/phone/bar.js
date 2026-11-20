@@ -1,6 +1,6 @@
-// The bar at the foot (BF-D-053, both spikes): what can be done with the picked block (+ Below, Up, Down, In, Out, Copy, Delete,
-// Wrap in...), or "+ Add a block" when nothing is picked, and the line's error message when it has one. It only draws: the host says
-// what to show and what each button does. Every button is 44 px high at least (style.js).
+// The bar at the foot (BF-D-053): what can be done with the picked block (+ Below, Up, Down, In, Out, Copy, Delete, Wrap in..., and
+// the changes of its gear: else, inputs), or "+ Add a block" when nothing is picked, and the line's error message when it has one. It
+// only draws: the host says what to show and what each button does. Every button is 44 px high at least (style.js).
 
 import { addPhoneStyle, make } from "./style.js";
 
@@ -36,8 +36,9 @@ export class ActionBar {
   }
 
   /**
-   * Draws the bar. `state`: {mode: "idle" | "picked" | "wrap", info, message, can}; `can` is what actionsFor says (picked only);
-   * `message` is the picked line's error, if it has one. `on`: {add, below, up, down, in, out, copy, delete, wrap, wrapWith(type), back}.
+   * Draws the bar. `state`: {mode: "idle" | "picked" | "wrap", info, message, can, gear}; `can` is what actionsFor says (picked only);
+   * `gear` is what gearFor says (picked only); `message` is the picked line's error, if it has one.
+   * `on`: {add, below, up, down, in, out, copy, delete, wrap, wrapWith(type), back, gear(id)}.
    */
   show(state, on) {
     this.grid.replaceChildren();
@@ -65,6 +66,7 @@ export class ActionBar {
       button(BAR_WORDS.copy, "copy", on.copy, can.copy);
       button(BAR_WORDS.delete, "delete", on.delete, can.delete);
       button(BAR_WORDS.wrap, "wrap", on.wrap, can.wrap);
+      for (const part of state.gear ?? []) button(part.label, `gear-${part.id}`, () => on.gear(part.id), part.enabled);
     }
   }
 

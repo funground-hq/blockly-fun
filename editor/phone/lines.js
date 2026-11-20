@@ -1,4 +1,4 @@
-// Which line of the Python is which block (BF-D-053, both spikes): for the error line. A run says "line 7"; the block that wrote it
+// Which line of the Python is which block (BF-D-053): for the error line. A run says "line 7"; the block that wrote it
 // is marked. No page: Blockly's blocks and the generator.
 
 import * as Blockly from "blockly";

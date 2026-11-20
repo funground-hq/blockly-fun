@@ -1,4 +1,4 @@
-// Spike B of BF-D-053: what a row says. The program is a list of rows, one for each line of a statement block (a C block's bodies are
+// The phone layout (BF-D-053): what a row says. The program is a list of rows, one for each line of a statement block (a C block's bodies are
 // rows under it, one step in; an "if" with "else" has a row for each part). This file works out the rows from Blockly's blocks and says
 // what is in each as plain data, so it can be tested without a page. list.js draws them.
 //
@@ -12,7 +12,7 @@
 // and a part of a line is one of
 //
 //   {type: "word", text}                                                    a word (a label, or a piece of Python)
-//   {type: "field", block, name, kind, text}                                a field of a statement or an operator: kind "name", "choice", "text" or "code"
+//   {type: "field", block, name, kind, text}                                a field of a statement or an operator: kind "name", "catalogue", "choice", "text" or "code"
 //   {type: "slot", conn, block, text}                                       a value in a slot: a chip with a text (a number, a name, a colour ...)
 //   {type: "slot", conn, block, parts}                                      a value that has slots of its own (x + i): a chip with chips in it
 //   {type: "slot", conn, block: null, text}                                 an empty slot
@@ -22,6 +22,7 @@
 import * as Blockly from "blockly";
 import { BY_TYPE, PREFIX } from "../blocks/table.js";
 import { FieldName } from "../blocks/register.js";
+import { FieldCatalogueName } from "../catalogue/field.js";
 import { generator, headerLines } from "../generator/python.js";
 import { previewOf } from "../fold.js";
 import { topStacks } from "./variables.js";
@@ -30,6 +31,9 @@ const STATEMENT = Blockly.inputs.inputTypes.STATEMENT;
 const VALUE = Blockly.inputs.inputTypes.VALUE;
 
 export const LOOKS = ["blocks", "code"];
+
+/** What the switch in the list's top row calls each look. */
+export const LOOK_WORDS = { blocks: "Blocks", code: "Python" };
 
 const defOf = (block) => BY_TYPE[block.type.slice(PREFIX.length)];
 const word = (text) => ({ type: "word", text });
@@ -56,7 +60,8 @@ function pythonOfField(block, field) {
 
 function fieldPart(block, field, look) {
   const kind = field instanceof FieldName ? "name"
-    : field instanceof Blockly.FieldDropdown ? "choice"
+    : field instanceof FieldCatalogueName ? "catalogue"
+      : field instanceof Blockly.FieldDropdown ? "choice"
       : defOf(block)?.fields?.[field.name]?.kind === "code" ? "code" : "text";
   let text = look === "code" ? pythonOfField(block, field) : String(field.getText());
   if (kind === "code") text = previewOf(field.getValue());

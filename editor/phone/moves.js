@@ -1,14 +1,16 @@
-// Moving, copying, deleting, wrapping and adding statements by their connections (BF-D-053, both spikes). No page: a block, the
-// workspace and Blockly's connections. Spike A's held list and spike B's rows both call these; each decides what is picked and
-// what is drawn afterwards. Every function here changes the program and leaves the undo step to the caller (inOneStep).
+// Moving, copying, deleting, wrapping and adding statements by their connections (BF-D-053). No page: a block, the workspace and
+// Blockly's connections. The list (list.js) calls these; it decides what is picked and what is drawn afterwards. Every function here
+// changes the program and leaves the undo step to the caller (inOneStep).
 //
 // Blockly's KeyboardMover was looked at and left: it is a move session with arrows and a preview, and a button here is one step.
 
 import * as Blockly from "blockly";
-import { toolboxBlock } from "../blocks/register.js";
-import { belowOf, endOf, endOfSketch } from "../add.js";
+import { BLOCKS } from "../blocks/table.js";
+import { toolboxBlock, typeOf } from "../blocks/register.js";
 
 const STATEMENT = Blockly.inputs.inputTypes.STATEMENT;
+const HATS = new Set(BLOCKS.filter((b) => b.hat).map((b) => typeOf(b.type)));
+const FRAME = typeOf("sketch_frame");
 
 export const MOVE_WORDS = {
   first: "This is the first line.",
@@ -35,6 +37,35 @@ export function above(block) {
   if (!c) return { kind: "none" };
   const owner = c.getSourceBlock();
   return owner.nextConnection === c ? { kind: "sibling", block: owner } : { kind: "parent", block: owner };
+}
+
+/** Where a block goes just under `owner`: its next connection or, with none (a hat), the start of its first C. */
+export function belowOf(owner) {
+  if (owner.nextConnection) return owner.nextConnection;
+  const input = owner.inputList.find((i) => i.type === STATEMENT && i.connection);
+  return input?.connection ?? null;
+}
+
+/** The connection at the end of a C's blocks (or the C itself when it is empty); null if the last block cannot take more. */
+export function endOf(connection) {
+  let c = connection;
+  for (let b = c.targetBlock(); b && !b.isShadow(); b = c.targetBlock()) {
+    if (!b.nextConnection) return null;
+    c = b.nextConnection;
+  }
+  return c;
+}
+
+/** The end of the "every frame" block's C, else of the first hat's. */
+export function endOfSketch(workspace) {
+  const tops = workspace.getTopBlocks(true);
+  const hats = [tops.find((b) => b.type === FRAME), tops.find((b) => HATS.has(b.type))];
+  for (const hat of hats) {
+    const body = hat?.getInput("DO")?.connection;
+    const end = body && endOf(body);
+    if (end) return end;
+  }
+  return null;
 }
 
 export const firstBody = (block) => block.inputList.find((i) => i.type === STATEMENT && i.connection)?.connection ?? null;

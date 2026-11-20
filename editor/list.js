@@ -1,12 +1,14 @@
-// Spike B of BF-D-053, the "phone-b" layout: our own list of lines. Blockly stays underneath with no page (a plain `new Blockly.Workspace()`:
+// The "phone" layout (BF-D-053): our own list of lines. Blockly stays underneath with no page (a plain `new Blockly.Workspace()`:
 // the model, the undo history and the Python generator), and the blocks are drawn here, as HTML:
 //
 //   - one row for each line of a statement; a C block's body is the rows under it, one step in, with a coloured rail for each block it is in;
 //   - the words are the block's own (rows.js reads them from the block's inputs), each value a chip, a nested value a chip with chips in it;
 //     rows wrap within the screen, text is 15 px and every chip's tap area is 44 px high at least;
-//   - two looks of the same rows: "blocks" (colours, Scratch's words) and "code" (the Python line, the same chips over its values);
-//   - a tap on a row picks its block (the bar at the foot, as in spike A: phone/bar.js), a tap on a chip opens the sheet for that value
-//     (the slot sheet, a list of choices, a grid of colours, or the keyboard for words), a tap on an empty body opens the block list.
+//   - two looks of the same rows: "blocks" (colours, Scratch's words) and "code" (the Python line, the same chips over its values),
+//     chosen by a switch in the top row, "Blocks | Python" (phone/switch.js);
+//   - a tap on a row picks its block (the bar at the foot: phone/bar.js, with the changes of the block's gear: phone/gear.js), a tap on a
+//     chip opens the sheet for that value (the slot sheet, a list of choices, a grid of colours, the catalogue's names, or the keyboard
+//     for words), a tap on an empty body opens the block list.
 //
 // Every edit is made on Blockly's blocks, so the Python is the generator's by construction. The rows are drawn again, in full, after each
 // change (simple on purpose: the time it takes is measured, see stats()). The page scrolls (the browser's scroll); nothing is dragged.
@@ -16,15 +18,18 @@ import { BY_TYPE } from "./blocks/table.js";
 import { typeOf } from "./blocks/register.js";
 import { keepAboveKeyboard } from "./keyboard.js";
 import { gridColours } from "./editors/fields.js";
+import { nameScope } from "./catalogue/call_block.js";
 import { choicesOf, isColourSlot } from "./editors/slots.js";
 import { ActionBar } from "./phone/bar.js";
+import { applyGear, gearFor } from "./phone/gear.js";
 import { labelOf, openBlockList, rowsFor } from "./phone/blocklist.js";
 import { blockAtLine } from "./phone/lines.js";
 import { actionsFor, addAt, duplicate, firstBody, inOneStep, moveDown, moveIn, moveOut, moveUp, remove, wrapIn } from "./phone/moves.js";
-import { openChoiceSheet, openTextSheet } from "./phone/pickers.js";
-import { describeProgram, LOOKS, textOfParts } from "./phone/rows.js";
+import { openChoiceSheet, openNameSheet, openTextSheet } from "./phone/pickers.js";
+import { describeProgram, LOOK_WORDS, LOOKS, textOfParts } from "./phone/rows.js";
 import { Recent } from "./phone/slots.js";
 import { addPhoneStyle, make } from "./phone/style.js";
+import { createLookSwitch } from "./phone/switch.js";
 import { createValueSheets } from "./phone/valuesheet.js";
 
 export const WORDS = {
@@ -34,9 +39,13 @@ export const WORDS = {
   nothing: "No blocks yet. Tap + Add a block.",
 };
 
+const TOP = 54;       // the top row: 44 px buttons and a little room
+
 const STYLE = `
 .bfl-frame { position: relative; box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; font-family: var(--body, system-ui, sans-serif); color: var(--ink, #191970); }
-.bfl-scroll { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; background: var(--panel, #fffaf0); }
+.bfl-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; box-sizing: border-box; display: flex; align-items: center; justify-content: flex-end; padding: 4px 6px;
+  background: var(--panel, #fffaf0); border-bottom: 1.5px solid var(--ink, #191970); }
+.bfl-scroll { position: absolute; inset: ${TOP}px 0 0 0; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; background: var(--panel, #fffaf0); }
 .bfl-list { box-sizing: border-box; padding: 8px 6px 12px; }
 .bfl-row { display: flex; align-items: stretch; box-sizing: border-box; min-height: 52px; margin: 0; border-bottom: 1.5px solid rgba(0, 0, 0, 0.22);
   background: var(--kind); color: var(--on); font-size: 15px; line-height: 1.3; touch-action: manipulation; cursor: pointer; -webkit-user-select: none; user-select: none; }
@@ -87,7 +96,7 @@ function addListStyle() {
   document.head.appendChild(style);
 }
 
-/** The page parts of the layout: a frame, a scroller (the page scrolls up and down) and the list of rows in it. */
+/** The page parts of the layout: a frame, a scroller (the page scrolls up and down) and the list of rows in it. The top row is added by attachList. */
 export function makeListFrame(element) {
   addListStyle();
   const frame = make("div", "bfl-frame");
@@ -104,8 +113,9 @@ const VALUE = Blockly.inputs.inputTypes.VALUE;
 /**
  * Makes `workspace` (a plain Blockly workspace) a list of rows in `list`. `catalogue` is the catalogue index or null.
  * Gives {pick, picked, look, markError, clearErrors, closeSheet, render, stats, refresh, dispose}.
+ * `onLook(look)` hears each change of the look, whoever made it (the switch, or the host through look()).
  */
-export function attachList(workspace, { frame, scroller, list, catalogue = null, look = "blocks" }) {
+export function attachList(workspace, { frame, scroller, list, catalogue = null, look = "blocks", onLook = () => {} }) {
   const recent = new Recent();
   const errors = new Map();          // block id -> message
   const stats = { renders: 0, lastMs: 0, maxMs: 0, rows: 0 };
@@ -121,6 +131,9 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
   const tools = {};
 
   const bar = new ActionBar(frame);
+  const top = make("div", "bfl-top");
+  const switcher = createLookSwitch(top, { looks: LOOK_WORDS, current: look, onChoose: (next) => tools.look(next) });
+  frame.append(top);
 
   // -- fitting: room for the bar and the sheet at the foot ---------------------------------------------------------------
 
@@ -212,6 +225,7 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
     list.replaceChildren(fragment);
     list.classList.toggle("bfl-code", current === "code");
     applyMarks();
+    if (picked) drawBar();               // what the picked block can do (the gear's buttons) follows what is in it
     fit();
     if (wantReveal) revealNow();
     stats.renders += 1;
@@ -263,13 +277,14 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
       wrap: () => { wrapping = true; drawBar(); },
       wrapWith: (type) => wrap(type),
       back: () => { wrapping = false; drawBar(); },
+      gear: (id) => act((block) => applyGear(block, id)),
     };
     if (!picked) bar.show({ mode: "idle", info: notice || WORDS.idle }, on);
     else if (wrapping) bar.show({ mode: "wrap", info: WORDS.wrap }, on);
     else {
       bar.show({
         mode: "picked", info: notice || labelOf(BY_TYPE[picked.type.slice(3)] ?? { scratch: "" }),
-        message: errors.get(picked.id), can: actionsFor(picked),
+        message: errors.get(picked.id), can: actionsFor(picked), gear: gearFor(picked),
       }, on);
     }
     fit();
@@ -384,6 +399,21 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
 
   const titleOfField = (block, field) => (field.name === "TEXT" ? "text" : field.name === "NAME" ? "name" : field.name === "PARAMS" ? "inputs" : field.name.toLowerCase());
 
+  /** The name of a call (`f . delta time`): the catalogue's names for that place; where the catalogue knows none, the keyboard. */
+  function openCatalogueName(block, field) {
+    const scope = catalogue ? nameScope(block, catalogue) : null;
+    if (!scope?.groups.length) {
+      openText(block, field);
+      return;
+    }
+    openOwn(() => openNameSheet(frame, {
+      title: "name", scope, current: String(field.getValue()),
+      onChoose: (entry) => { field.select(entry); closeFieldSheet(); },
+      onUse: (text) => { block.setFieldValue(text, field.name); closeFieldSheet(); },
+      onDone: closeFieldSheet,
+    }), block);
+  }
+
   /** A text value: the colour grid in a colour slot, the catalogue's words in a slot that lists some, else the keyboard. */
   function openTextValue(block) {
     const field = block.getField("TEXT");
@@ -414,6 +444,7 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
     const field = block.getField(name);
     if (!field) return;
     if (kind === "name") sheets.openName(block, field);
+    else if (kind === "catalogue") openCatalogueName(block, field);
     else if (kind === "choice") openChoice(block, field);
     else openText(block, field, kind === "code");
   }
@@ -489,7 +520,9 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
       if (next !== current) {
         current = next;
         render();
+        onLook(current);
       }
+      switcher.show(current);
       return current;
     },
     dispose() {
@@ -499,6 +532,7 @@ export function attachList(workspace, { frame, scroller, list, catalogue = null,
       closeSheets();
       closeAddList();
       bar.dispose();
+      top.remove();
     },
   });
   return tools;

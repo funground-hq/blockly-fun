@@ -1,5 +1,5 @@
-// BF-D-053, spike B: what a row says (editor/phone/rows.js) and the moves both spikes share (editor/phone/moves.js). Headless (no page): the
-// rows are plain data from a Blockly workspace with no page, and the page itself is checked by tools/spike_b_check.mjs.
+// BF-D-053: what a row says (editor/phone/rows.js) and the moves (editor/phone/moves.js). Headless (no page): the
+// rows are plain data from a Blockly workspace with no page, and the page itself is checked by tools/phone_check.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -202,7 +202,7 @@ test("calls with arguments, keywords and a gear: the Code look and the Blocks lo
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// The moves both spikes share
+// The moves
 
 test("up, down, in, out move one line and the Python follows", () => {
   withWorkspace(timeBased, (workspace) => {
@@ -283,7 +283,7 @@ test("a hat added to a sketch goes after the last stack; the end of the sketch t
   });
 });
 
-test("what can be done with a block is the same for both spikes (a hat can be deleted but not copied)", () => {
+test("what can be done with a block is the same for every block (a hat can be deleted but not copied)", () => {
   withWorkspace(timeBased, (workspace) => {
     const hat = actionsFor(first(workspace, "sketch_frame"));
     assert.equal(hat.delete, true);

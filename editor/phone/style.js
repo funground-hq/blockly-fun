@@ -6,7 +6,7 @@ export const TARGET = 44;
 
 const STYLE = `
 .bfp-sheet, .bfp-list, .bfp-bar { box-sizing: border-box; font-family: var(--body, system-ui, sans-serif); color: var(--ink, #191970); }
-.bfp-sheet button, .bfp-list button, .bfp-bar button { font: 600 15px var(--body, system-ui, sans-serif); color: inherit; min-height: ${TARGET}px; min-width: ${TARGET}px;
+.bfp-sheet button, .bfp-list button, .bfp-bar button, .bfp-switch button { font: 600 15px var(--body, system-ui, sans-serif); color: inherit; min-height: ${TARGET}px; min-width: ${TARGET}px;
   padding: 0 10px; border: 1.5px solid var(--ink, #191970); border-radius: 10px; background: var(--paper, #fdf6e7); touch-action: manipulation; cursor: pointer; }
 .bfp-sheet button:disabled, .bfp-bar button:disabled { opacity: 0.4; }
 .bfp-sheet button:focus-visible, .bfp-list button:focus-visible, .bfp-bar button:focus-visible { outline: 3px solid var(--gold, #ffd700); outline-offset: 2px; }
@@ -36,6 +36,18 @@ const STYLE = `
 .bfp-name input { flex: 1; min-width: 0; height: ${TARGET}px; padding: 0 10px; border: 1.5px solid var(--ink, #191970); border-radius: 10px;
   font: 16px var(--body, system-ui, sans-serif); }   /* 16 px: a phone browser zooms in on a smaller one */
 .bfp-say { margin: 6px 2px 0; font-size: 15px; min-height: 18px; }
+
+.bfp-names { margin-top: 6px; }
+.bfp-names .bfp-group { padding: 6px 4px 2px; font-size: 14px; font-weight: 700; color: var(--muted, #5a5f84); }
+.bfp-names .bfp-name-row { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; width: 100%; margin-top: 4px; padding: 4px 10px;
+  text-align: left; font-weight: 500; }
+.bfp-names .bfp-name-word { font-weight: 700; overflow-wrap: anywhere; }
+.bfp-names .bfp-name-plain { font-size: 14px; font-weight: 400; color: var(--muted, #5a5f84); }
+.bfp-names .bfp-name-row[aria-selected="true"] { background: var(--ink, #191970); color: var(--paper, #fdf6e7); }
+.bfp-names .bfp-name-row[aria-selected="true"] .bfp-name-plain { color: inherit; }
+
+.bfp-switch { display: flex; gap: 6px; }
+.bfp-switch button[aria-pressed="true"] { background: var(--ink, #191970); color: var(--paper, #fdf6e7); }
 
 .bfp-list { position: absolute; inset: 0; z-index: 110; display: flex; flex-direction: column; background: var(--panel, #fffaf0); }
 .bfp-find { display: flex; gap: 6px; padding: 8px; border-bottom: 2px solid var(--ink, #191970); }
@@ -74,7 +86,7 @@ export function addPhoneStyle() {
 /**
  * A part that opens while a finger is still on the screen (the sheet, opened by a tap on a value) must not take that tap's own click:
  * the browser sends the click of a touch to whatever is under the finger when it lifts, and that was the new slider (a tap on a
- * number set it to the number under the finger: found by tools/spike_a_check.mjs). The part ignores touches for a moment.
+ * number set it to the number under the finger: found by tools/phone_check.mjs). The part ignores touches for a moment.
  */
 export function ignoreGhostClick(el, ms = 300) {
   el.style.pointerEvents = "none";

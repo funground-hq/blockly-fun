@@ -411,7 +411,7 @@ function swapForKit(block, kit) {
   if (fields && Object.keys(fields).length) state.fields = fields;
   const where = block.getRelativeToSurfaceXY();
   const wasGroup = Blockly.Events.getGroup();
-  Blockly.Events.setGroup(true);
+  if (!wasGroup) Blockly.Events.setGroup(true);       // inside a step already (the phone's name sheet), the swap joins it
   try {
     const next = Blockly.serialization.blocks.append(state, workspace, { recordUndo: true });
     const place = block.previousConnection?.targetConnection ?? block.outputConnection?.targetConnection ?? null;
@@ -423,7 +423,7 @@ function swapForKit(block, kit) {
     if (comment !== null && comment !== undefined) next.setCommentText(comment);
     block.dispose(false);
   } finally {
-    Blockly.Events.setGroup(wasGroup);
+    if (!wasGroup) Blockly.Events.setGroup(false);
   }
 }
 
@@ -553,7 +553,18 @@ function fillNewSlots(block, def, remap) {
   }
 }
 
-function newSlots(def, state) {
+/**
+ * Builds the block again for the items the gear would leave (see compose): the same steps the gear's bubble takes. Gives the items,
+ * the keyword arguments last (Python wants positional arguments first).
+ */
+function recompose(block, def, settings, items) {
+  if (def.mutator === "args") items.sort((a, b) => (a.type === "kw") - (b.type === "kw"));
+  const { state, remap } = stateFromItems(def, items);
+  rebuild(block, def, settings, state, remap, true);
+  fillNewSlots(block, def, remap);
+}
+
+function newSlots(def) {
   // After a rebuild the items in the gear must name the new inputs.
   if (def.mutator === "if") {
     let i = 0;
@@ -613,8 +624,6 @@ function definition(def, settings) {
   return {
     init() {
       this.bfData = { blank: 0, trailing: false };
-      // On a phone there is no context menu (BF-D-051): Delete is in Move's bar, and a long press must not offer it elsewhere.
-      if (this.workspace.bfNoContextMenu) this.contextMenu = false;
       this.bfCatalogue = def.mutator === "args" || def.property ? settings.catalogue : undefined;
       if (def.hat) this.hat = "cap";   // a rounded top, as Scratch's "when ... clicked" (the renderer reads it)
       this.setColour(hueOf(def));
@@ -635,12 +644,6 @@ function definition(def, settings) {
         });
       }
       if (def.mutator) this.setMutator(new Blockly.icons.MutatorIcon(MUTATOR_ITEMS[def.mutator].map((i) => PREFIX + "m_" + i), this));
-    },
-
-    // A field is editable when its block is. The phone's modes (modes.js) lock values outside Values mode, with no change to the
-    // block's saved state (setEditable would be saved as editable: false). Blockly's own rule is kept for the rest.
-    isEditable() {
-      return !this.workspace.bfEditLocked && this.isOwnEditable() && !this.isDeadOrDying() && !this.workspace.isReadOnly();
     },
 
     saveExtraState() {
@@ -685,13 +688,23 @@ function definition(def, settings) {
       for (let part = root.getInputTargetBlock("STACK"); part; part = part.getNextBlock()) {
         items.push({ type: part.type.slice((PREFIX + "m_").length), slot: part.bfSlot, block: part });
       }
-      // Python wants positional arguments before keyword ones, so the keyword ones go last (in the order given)
-      if (def.mutator === "args") items.sort((a, b) => (a.type === "kw") - (b.type === "kw"));
-      const { state, remap } = stateFromItems(def, items);
-      rebuild(this, def, settings, state, remap, true);
-      fillNewSlots(this, def, remap);
-      const next = newSlots(def, state);
+      recompose(this, def, settings, items);
+      const next = newSlots(def);
       for (const item of items) item.block.bfSlot = next(item);
+    },
+
+    // The gear without its bubble (the phone's list): the parts the gear would show, and a change of them. A part is
+    // {type: "elif" | "else" | "item" | "pos" | "kw", slot}; a part with slot null is new. One change is one BlockChange event, as the
+    // bubble's is, so it is one step to undo.
+    bfParts() {
+      return def.mutator ? itemsOf(this, def) : null;
+    },
+
+    bfSetParts(parts) {
+      const before = JSON.stringify(this.saveExtraState() ?? {});
+      recompose(this, def, settings, parts);
+      const after = JSON.stringify(this.saveExtraState() ?? {});
+      if (before !== after) Blockly.Events.fire(new Blockly.Events.BlockChange(this, "mutation", null, before, after));
     },
 
     customContextMenu: isStatement ? function (options) { offerStatementMenu(this, options); } : undefined,
