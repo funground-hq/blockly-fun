@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>blockly-fun: the phone layout</title>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #blocks { position: absolute; inset: 0; }
+    /* the host's own strip on a phone (BF-D-053): Undo and Redo always shown, 44 px high (the switch of look is in the list's own top row) */
+    #host { display: none; position: absolute; inset: 0 0 auto 0; height: 48px; box-sizing: border-box; padding: 2px 6px; gap: 6px; align-items: center;
+      background: #fffaf0; border-bottom: 2px solid #191970; }
+    #host button { min-height: 44px; min-width: 64px; font: 600 15px system-ui, sans-serif; border: 1.5px solid #191970; border-radius: 10px; background: #fdf6e7; }
+    #host button:disabled { opacity: 0.4; }
+    body.phone #host { display: flex; }
+    body.phone #blocks { top: 48px; }
+  </style>
+</head>
+<body>
+  <!-- The phone layout as a host page gets it: the built bundle (npm run build), the layout chosen from the screen's size as
+       BF-D-049 says, and switched again when the window changes size. tools/phone_check.mjs drives it. -->
+  <div id="host"><button id="undo" type="button">Undo</button><button id="redo" type="button">Redo</button></div>
+  <div id="blocks"></div>
+  <script type="module">
+    const bf = await import("../dist/blockly-fun.js");
+    const element = document.getElementById("blocks");
+    // ?catalogue gives the editor funground's catalogue (a copy kept for the tests), as Play does
+    const catalogue = new URLSearchParams(location.search).has("catalogue")
+      ? await (await fetch("../tests/fixtures/funground/completions.json")).json() : null;
+    const wanted = () => (new URLSearchParams(location.search).get("layout")
+      ?? (bf.isPhoneScreen(screen.width, screen.height) ? "phone" : "wide"));
+    const layout = wanted();
+    document.body.classList.toggle("phone", layout === "phone");
+    const undo = document.getElementById("undo");
+    const redo = document.getElementById("redo");
+    const history = () => { undo.disabled = !window.bfEditor?.canUndo(); redo.disabled = !window.bfEditor?.canRedo(); };
+    const editor = bf.createBlocksEditor({ element, media: "../dist/media/", layout, catalogue, onHistory: history });
+    window.bfEditor = editor;
+    undo.addEventListener("click", () => { editor.undo(); history(); });
+    redo.addEventListener("click", () => { editor.redo(); history(); });
+    history();
+    window.bfReady = true;
+    // the switch on resize or rotation; resize() measures the page again when the layout stays
+    window.addEventListener("resize", () => {
+      const next = bf.isPhoneScreen(screen.width, screen.height) ? "phone" : "wide";
+      if (!new URLSearchParams(location.search).has("layout") && next !== editor.layout()) {
+        editor.layout(next);
+        document.body.classList.toggle("phone", next === "phone");
+      }
+    });
+  </script>
+</body>
+</html>

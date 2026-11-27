@@ -3,6 +3,7 @@
 
 import * as Blockly from "blockly";
 import { FieldAngle, FieldColour, FieldGridDropdown, FieldMultilineInput, FieldSlider } from "./plugins.js";
+import { writesOnFinish } from "../blocks/finish.js";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Numbers: a dial and a slider that keep the number as text
@@ -35,8 +36,9 @@ const keepsText = (Base) => class extends Base {
   }
 };
 
-class DialField extends keepsText(FieldAngle) {}
-class SliderField extends keepsText(FieldSlider) {}
+class DialField extends keepsText(writesOnFinish(FieldAngle)) {}
+class SliderField extends keepsText(writesOnFinish(FieldSlider)) {}
+class LinesField extends writesOnFinish(FieldMultilineInput) {}
 
 /**
  * funground's angles are in degrees, from the right (3 o'clock), turning clockwise on the screen (y points down):
@@ -56,7 +58,21 @@ export const dial = (text) => {
 export const slide = (text, { low, high, step }) => new SliderField(text, low, high, step);
 
 /** Several lines of Python. */
-export const multiline = (text) => new FieldMultilineInput(text);
+export const multiline = (text) => new LinesField(text);
+
+// ---------------------------------------------------------------------------------------------------------------
+// Words from a fixed list
+
+/**
+ * A text in a slot whose choices the catalogue lists (a text style is "normal", "bold", "italic" or "bold_italic"): a
+ * dropdown of those words. The text is the word, so the saved JSON and the Python are what they were with a plain box. A
+ * text that is not one of the words is refused (the dropdown would show another word), and the block keeps its plain box.
+ */
+export const choice = (text, words) => {
+  const field = new Blockly.FieldDropdown(words.map((word) => [word, word]));
+  field.setValue(text);
+  return field;
+};
 
 // ---------------------------------------------------------------------------------------------------------------
 // Colours: a grid of funground's names, and "More colours"

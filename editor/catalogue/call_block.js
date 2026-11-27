@@ -3,7 +3,7 @@
 // memory (bfSlotLabels); none of it is saved, in the JSON or in the Python.
 
 import * as Blockly from "blockly";
-import { PREFIX } from "../blocks/table.js";
+import { PREFIX, categoryColour } from "../blocks/table.js";
 import { slotLabel, positionalParams } from "./slots.js";
 import { staticType } from "./types.js";
 import { importsInWorkspace } from "./imports.js";
@@ -11,6 +11,28 @@ import { importsInWorkspace } from "./imports.js";
 const METHODS = new Set([PREFIX + "method", PREFIX + "method_value"]);
 const BARE = new Set([PREFIX + "call", PREFIX + "call_value"]);
 const ATTRIBUTE = PREFIX + "attribute";
+
+// A general call block takes the colour of its name (BF-D-039): the category of its catalogue section. One table; a
+// name the table does not know, and a block with no entry, keep the "Calling anything else" grey. Names of funground's
+// own (`f.`) go by their section; the libraries by their name.
+const SECTION_CATEGORY = new Map([
+  ...["Shapes", "Curves and custom shapes", "Paths and clipping", "Text and fonts", "Images and SVG", "Marks"]
+    .map((section) => [section, "shapes"]),
+  ...["Fill and stroke", "Colour", "Transforms and the state stack", "Live values", "Pixels and filters", "Pictures and layers",
+    "Ground", "Sketch and loop", "Time", "Names for colours and options"].map((section) => [section, "canvas"]),
+  ...["Maths", "Randomness and noise"].map((section) => [section, "maths"]),
+  ["Interaction and controls", "events"],
+]);
+const LIBRARY_CATEGORY = new Map([["sound", "sound"], ["camera", "camera"], ["ml", "camera"]]);
+
+/** The category id a catalogue entry (or null) is coloured by. */
+export function categoryOfEntry(entry) {
+  if (!entry) return "calls";
+  const { owner } = entry;
+  if (owner.kind === "library") return LIBRARY_CATEGORY.get(owner.name) ?? "calls";
+  if (owner.kind === "f") return SECTION_CATEGORY.get(entry.section) ?? "calls";
+  return "calls";
+}
 
 /** True for the blocks that have an object (`object.name(...)`, `object.name`). */
 export const isMethodBlock = (block) => METHODS.has(block.type) || block.type === ATTRIBUTE;
@@ -45,6 +67,18 @@ export function lookupEntry(block, catalogue, fresh = false) {
   return type ? catalogue.member(type, name) : catalogue.onlyMember(name);
 }
 
+/**
+ * What a name list offers for a block (catalogue.scope: {known, groups}): Python's own and the imported names for a bare call,
+ * else the members of the object's type. Null for a block that has no name list. The types are worked out fresh.
+ */
+export function nameScope(block, catalogue) {
+  if (isBareCall(block)) return catalogue.bareScope(importsOf(block, true));
+  if (!isMethodBlock(block)) return null;
+  const tracker = block.workspace.bfTypes;
+  const type = tracker ? tracker.objectType(block) : staticType(block, catalogue);
+  return catalogue.scope(type, { properties: isAttributeBlock(block) });
+}
+
 /** The tooltip: the signature, then the plain sentence (or the summary). */
 export function tooltipOf(entry) {
   return `${entry.signature}\n${entry.plain}`.trim();
@@ -68,6 +102,8 @@ export function refreshCall(block) {
   } finally {
     Blockly.Events.enable();
   }
+  const colour = categoryColour(categoryOfEntry(entry));
+  if (block.getColour().toLowerCase() !== colour.toLowerCase()) block.setColour(colour);
   block.setHelpUrl(catalogue.helpUrl(entry) ?? "");
   block.getField("NAME")?.refreshDisplay?.();
 }

@@ -4,5 +4,6 @@
 const Blockly = globalThis.Blockly;
 export const {
   Blocks, CodeGenerator, ConnectionType, Css, dialog, DropDownDiv, Events, FieldDropdown, FieldLabel, FieldLabelSerializable,
-  FieldTextInput, WidgetDiv, Workspace, icons, inject, serialization, utils,
+  FieldTextInput, ToolboxCategory, WidgetDiv, Workspace, browserEvents, config, getFocusManager, icons, inject, inputs, registry, renderManagement,
+  serialization, svgResize, utils,
 } = Blockly;

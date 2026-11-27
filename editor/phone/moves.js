@@ -1,0 +1,273 @@
+// Moving, copying, deleting, wrapping and adding statements by their connections (BF-D-053). No page: a block, the workspace and
+// Blockly's connections. The list (list.js) calls these; it decides what is picked and what is drawn afterwards. Every function here
+// changes the program and leaves the undo step to the caller (inOneStep).
+//
+// Blockly's KeyboardMover was looked at and left: it is a move session with arrows and a preview, and a button here is one step.
+
+import * as Blockly from "blockly";
+import { BLOCKS } from "../blocks/table.js";
+import { toolboxBlock, typeOf } from "../blocks/register.js";
+
+const STATEMENT = Blockly.inputs.inputTypes.STATEMENT;
+const HATS = new Set(BLOCKS.filter((b) => b.hat).map((b) => typeOf(b.type)));
+const FRAME = typeOf("sketch_frame");
+
+export const MOVE_WORDS = {
+  first: "This is the first line.",
+  last: "This is the last line.",
+  noRoom: "The block above has no room inside.",
+  notInside: "It is not inside another block.",
+  cannot: "That block cannot go there.",
+};
+
+/** Runs `fn` as one step to undo (a step that is already open is joined). */
+export function inOneStep(fn) {
+  const outer = Blockly.Events.getGroup();
+  if (!outer) Blockly.Events.setGroup(true);
+  try {
+    return fn();
+  } finally {
+    if (!outer) Blockly.Events.setGroup(false);
+  }
+}
+
+/** What stands above a statement: its sibling (the block it hangs under), its parent (the block whose C it is first in), or nothing. */
+export function above(block) {
+  const c = block.previousConnection?.targetConnection;
+  if (!c) return { kind: "none" };
+  const owner = c.getSourceBlock();
+  return owner.nextConnection === c ? { kind: "sibling", block: owner } : { kind: "parent", block: owner };
+}
+
+/** Where a block goes just under `owner`: its next connection or, with none (a hat), the start of its first C. */
+export function belowOf(owner) {
+  if (owner.nextConnection) return owner.nextConnection;
+  const input = owner.inputList.find((i) => i.type === STATEMENT && i.connection);
+  return input?.connection ?? null;
+}
+
+/** The connection at the end of a C's blocks (or the C itself when it is empty); null if the last block cannot take more. */
+export function endOf(connection) {
+  let c = connection;
+  for (let b = c.targetBlock(); b && !b.isShadow(); b = c.targetBlock()) {
+    if (!b.nextConnection) return null;
+    c = b.nextConnection;
+  }
+  return c;
+}
+
+/** The end of the "every frame" block's C, else of the first hat's. */
+export function endOfSketch(workspace) {
+  const tops = workspace.getTopBlocks(true);
+  const hats = [tops.find((b) => b.type === FRAME), tops.find((b) => HATS.has(b.type))];
+  for (const hat of hats) {
+    const body = hat?.getInput("DO")?.connection;
+    const end = body && endOf(body);
+    if (end) return end;
+  }
+  return null;
+}
+
+/** The bodies of a C block (its statement inputs' connections), in the order the rows show them: an "if" with "else" has two. */
+export const bodiesOf = (block) => block.inputList.filter((i) => i.type === STATEMENT && i.connection).map((i) => i.connection);
+
+export const firstBody = (block) => bodiesOf(block)[0] ?? null;
+
+/** The last body of a C block: the one whose rows stand just above the block under it. */
+export const lastBody = (block) => bodiesOf(block).at(-1) ?? null;
+
+/** The body a statement is in: {parent, bodies, index} (index in bodiesOf(parent)), or null for a block in no C. */
+export function bodyOf(block) {
+  const parent = block.getSurroundParent();
+  if (!parent) return null;
+  let top = block;
+  while (top.getPreviousBlock() !== parent) top = top.getPreviousBlock();
+  const bodies = bodiesOf(parent);
+  const index = bodies.indexOf(top.previousConnection.targetConnection);
+  return index < 0 ? null : { parent, bodies, index };
+}
+
+/** Puts a lone block (one taken out) at the start of a body, before what is in it. */
+function putFirst(body, block) {
+  const first = body.targetBlock();
+  if (first) body.disconnect();
+  body.connect(block.previousConnection);
+  if (first) block.nextConnection.connect(first.previousConnection);
+}
+
+/** What can be done with a picked statement now (the bar greys the rest). */
+export function actionsFor(block) {
+  const a = above(block);
+  const next = block.getNextBlock();
+  const body = bodyOf(block);
+  return {
+    below: true,
+    up: a.kind === "sibling" || (a.kind === "parent" && (body?.index > 0 || !!a.block.previousConnection)),
+    down: (!!next && !!next.nextConnection) || (!next && !!body && (body.index < body.bodies.length - 1 || !!body.parent.nextConnection)),
+    in: a.kind === "sibling" && !!lastBody(a.block),
+    out: !!block.getSurroundParent()?.nextConnection,
+    copy: !!block.nextConnection && !!block.previousConnection,
+    delete: true,
+    wrap: !!block.previousConnection,
+  };
+}
+
+/**
+ * Takes a statement out of its stack and closes the gap: the block under it goes to where it was. (Blockly 13's unplug(true) was tried:
+ * with a block under it, it left that block hanging on, and the next connection made a loop.)
+ */
+export function takeOut(block) {
+  const up = block.previousConnection?.targetConnection;      // a hat has no previous connection
+  const next = block.getNextBlock();
+  const at = block.getRelativeToSurfaceXY();
+  if (next && !next.isShadow()) block.nextConnection.disconnect();
+  if (up) block.previousConnection.disconnect();
+  if (next && up) up.connect(next.previousConnection);
+  else if (next) {                                            // the first block of a stack: what is under it takes its place
+    const here = next.getRelativeToSurfaceXY();
+    next.moveBy(at.x - here.x, at.y - here.y);
+  }
+}
+
+/** Puts a block where `before` hangs: above it, in the same stack (or at its place when it starts a stack). */
+function putAbove(block, before) {
+  const q = before.previousConnection?.targetConnection;
+  if (q) {
+    q.connect(block.previousConnection);
+    return;
+  }
+  const at = before.getRelativeToSurfaceXY();
+  const here = block.getRelativeToSurfaceXY();
+  block.moveBy(at.x - here.x, at.y - here.y);
+  block.nextConnection.connect(before.previousConnection);
+}
+
+// Each move gives null when it was done, or a sentence saying why it cannot be. A move goes one row up or down the list, so it passes the
+// parts of a C block one by one: down from the last line of "if" is the first line of "else"; up from the first line of "else" is the
+// end of "if".
+
+export function moveUp(block) {
+  const a = above(block);
+  if (a.kind === "none") return MOVE_WORDS.first;
+  const body = a.kind === "parent" ? bodyOf(block) : null;
+  const before = body?.index > 0 ? endOf(body.bodies[body.index - 1]) : null;
+  if (before) {                                     // the first line of a later part: to the end of the part above
+    takeOut(block);
+    before.connect(block.previousConnection);
+    return null;
+  }
+  if (a.kind === "parent" && !a.block.previousConnection) return MOVE_WORDS.first;
+  takeOut(block);
+  putAbove(block, a.block);          // above the sibling it passes, or above the parent it leaves
+  return null;
+}
+
+export function moveDown(block) {
+  const next = block.getNextBlock();
+  if (next) {
+    if (!next.nextConnection) return MOVE_WORDS.last;
+    takeOut(block);
+    next.nextConnection.connect(block.previousConnection);
+    return null;
+  }
+  const body = bodyOf(block);
+  if (body && body.index < body.bodies.length - 1) {     // the last line of a part with another under it: to the start of that one
+    takeOut(block);
+    putFirst(body.bodies[body.index + 1], block);
+    return null;
+  }
+  if (body?.parent.nextConnection) {                // the last line of a C: it leaves the C, below it
+    takeOut(block);
+    body.parent.nextConnection.connect(block.previousConnection);
+    return null;
+  }
+  return MOVE_WORDS.last;
+}
+
+/** Into the C block above it, at the end of the C's last part: the rows just above the block are that part's. */
+export function moveIn(block) {
+  const a = above(block);
+  const body = a.kind === "sibling" ? lastBody(a.block) : null;
+  if (!body) return MOVE_WORDS.noRoom;
+  const end = endOf(body);
+  if (!end) return MOVE_WORDS.noRoom;
+  takeOut(block);
+  end.connect(block.previousConnection);
+  return null;
+}
+
+export function moveOut(block) {
+  const parent = block.getSurroundParent();
+  if (!parent?.nextConnection) return MOVE_WORDS.notInside;
+  takeOut(block);
+  parent.nextConnection.connect(block.previousConnection);
+  return null;
+}
+
+/** A copy of the statement (and what is in it), put right under it. Gives the copy. */
+export function duplicate(workspace, block) {
+  const state = Blockly.serialization.blocks.save(block, { addCoordinates: false, addNextBlocks: false, saveIds: false });
+  const copy = Blockly.serialization.blocks.append(state, workspace, { recordUndo: true });
+  block.nextConnection.connect(copy.previousConnection);
+  return copy;
+}
+
+export function remove(block) {
+  takeOut(block);
+  block.dispose(false);
+}
+
+/** Puts a new C block (repeat, count, if) where the block is, with the block inside it. Gives the new block. */
+export function wrapIn(workspace, block, type) {
+  const outer = block.previousConnection.targetConnection;
+  const next = block.getNextBlock();
+  const at = block.getRelativeToSurfaceXY();
+  const wrapper = Blockly.serialization.blocks.append(toolboxBlock(type), workspace, { recordUndo: true });
+  if (next) block.nextConnection.disconnect();
+  block.unplug(false);
+  if (outer) outer.connect(wrapper.previousConnection);
+  else {
+    const here = wrapper.getRelativeToSurfaceXY();
+    wrapper.moveBy(at.x - here.x, at.y - here.y);
+  }
+  firstBody(wrapper).connect(block.previousConnection);
+  if (next) wrapper.nextConnection.connect(next.previousConnection);
+  return wrapper;
+}
+
+/** The y just under everything in the workspace: a block of its own goes there, so the stacks keep their order. */
+function belowEverything(workspace) {
+  if (typeof workspace.getBlocksBoundingBox === "function") return workspace.getBlocksBoundingBox().bottom + 40;
+  return Math.max(-40, ...workspace.getTopBlocks(false).map((b) => b.getRelativeToSurfaceXY().y)) + 40;
+}
+
+function putAtFoot(workspace, block) {
+  const left = workspace.getTopBlocks(false).filter((b) => b !== block).map((b) => b.getRelativeToSurfaceXY().x);
+  const at = block.getRelativeToSurfaceXY();
+  block.moveBy((left.length ? Math.min(...left) : 0) - at.x, belowEverything(workspace) - at.y);
+}
+
+/**
+ * Adds a block of `type` (a toolbox block) where `where` says: {kind: "below", block}, {kind: "inside", conn} or {kind: "end"} (the end of
+ * the sketch). Gives `{block}`, or `{problem}` (a sentence) with nothing added.
+ */
+export function addAt(workspace, type, where) {
+  const block = Blockly.serialization.blocks.append(toolboxBlock(type), workspace, { recordUndo: true });
+  const checker = workspace.connectionChecker;
+  const into = where.kind === "below" ? belowOf(where.block) : where.kind === "inside" ? where.conn : null;
+  let problem = null;
+  if (block.previousConnection && into) {
+    if (checker.canConnect(block.previousConnection, into, false, Infinity)) into.connect(block.previousConnection);
+    else problem = MOVE_WORDS.cannot;
+  } else if (block.previousConnection) {
+    const end = endOfSketch(workspace);
+    if (end && checker.canConnect(block.previousConnection, end, false, Infinity)) end.connect(block.previousConnection);
+    else putAtFoot(workspace, block);
+  } else if (into) problem = MOVE_WORDS.cannot;
+  else putAtFoot(workspace, block);
+  if (problem) {
+    block.dispose(false);
+    return { problem };
+  }
+  return { block };
+}

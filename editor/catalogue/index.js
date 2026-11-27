@@ -135,6 +135,16 @@ export class Catalogue {
     return this.libraries.has(name);
   }
 
+  /**
+   * The words of one of the catalogue's CONSTANTS groups ("STYLE" gives normal, bold, italic, bold_italic), or null if there is
+   * no such group. The groups are the words that choose an option; a parameter written `style: CONSTANTS.STYLE` takes one.
+   */
+  constantWords(group) {
+    const constants = (this.raw.names ?? []).find((n) => n.name === "CONSTANTS");
+    const found = constants?.members?.find((g) => g.name === group);
+    return found?.members?.map((m) => m.value) ?? null;
+  }
+
   /** True if the catalogue says this parameter of an `f` function is a colour. */
   isColourParam(entry, param) {
     return entry.owner.kind === "f" && this.colourParams.has(`${entry.name}.${param}`);

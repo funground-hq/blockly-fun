@@ -10,12 +10,15 @@
 // JSON and Python are exactly what they are without it. (Choosing a name that has a kit block puts that block in: BF-6.)
 
 import * as Blockly from "blockly";
-import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX } from "./table.js";
+import { BLOCKS, CATEGORIES, DEFAULTS, NEW_SLOTS, PREFIX, categoryColour } from "./table.js";
+import { registerIconToolbox } from "./toolbox_icons.js";
 import { createCatalogue } from "../catalogue/index.js";
 import { FieldCatalogueName } from "../catalogue/field.js";
 import { isBareCall, lookupEntry, refreshCall, tooltipOf } from "../catalogue/call_block.js";
 import { defaultFor } from "../catalogue/slots.js";
 import { kitFits, kitFor, slotNames } from "../catalogue/kit.js";
+import { FieldText } from "./finish.js";
+import { foldFields } from "../fold.js";
 
 export { PREFIX };
 export const typeOf = (id) => PREFIX + id;
@@ -199,13 +202,13 @@ function makeField(spec, rows) {
           onChoose: (block, entry) => chooseEntry(block, entry, rows.def, settings),
         });
       }
-      return new Blockly.FieldTextInput(spec.default, nameValidator);
-    case "number": return new Blockly.FieldTextInput(spec.default, numberValidator);
+      return new FieldText(spec.default, nameValidator);
+    case "number": return new FieldText(spec.default, numberValidator);
     case "label": return new Blockly.FieldLabelSerializable(spec.default);
-    case "params": return new Blockly.FieldTextInput(spec.default, paramsValidator);
+    case "params": return new FieldText(spec.default, paramsValidator);
     case "dropdown":
       return new Blockly.FieldDropdown(spec.options.map((o) => [o[words], o.value]));
-    default: return new Blockly.FieldTextInput(spec.default); // text, code
+    default: return new FieldText(spec.default); // text, code
   }
 }
 
@@ -319,12 +322,19 @@ function layout(block, def, settings, state) {
       const label = rows.text(plain);
       if (labelled && label) block.bfSlotLabels[i] = { field: label, plain, positional: kind === "p" };
       if (kind === "k") {
-        rows.pending.push([new Blockly.FieldTextInput("key", nameValidator), "KW" + i]);
+        rows.pending.push([new FieldText("key", nameValidator), "KW" + i]);
         rows.text("=");
       }
       rows.value("ARG" + i);
     });
     rows.text(words.tail);
+    rows.end();
+  } else if (def.fold) {
+    // the words "Python code:" are the fold control; the text follows, and its first line while the block is folded
+    const { control, preview } = foldFields(block, words.replace(/\s*\[TEXT\]\s*$/, ""), def.kind === "statement");
+    rows.pending.push([control, "FOLD"]);
+    rows.field("TEXT");
+    rows.pending.push([preview, undefined]);
     rows.end();
   } else {
     rows.tokens(words);
@@ -401,7 +411,7 @@ function swapForKit(block, kit) {
   if (fields && Object.keys(fields).length) state.fields = fields;
   const where = block.getRelativeToSurfaceXY();
   const wasGroup = Blockly.Events.getGroup();
-  Blockly.Events.setGroup(true);
+  if (!wasGroup) Blockly.Events.setGroup(true);       // inside a step already (the phone's name sheet), the swap joins it
   try {
     const next = Blockly.serialization.blocks.append(state, workspace, { recordUndo: true });
     const place = block.previousConnection?.targetConnection ?? block.outputConnection?.targetConnection ?? null;
@@ -413,7 +423,7 @@ function swapForKit(block, kit) {
     if (comment !== null && comment !== undefined) next.setCommentText(comment);
     block.dispose(false);
   } finally {
-    Blockly.Events.setGroup(wasGroup);
+    if (!wasGroup) Blockly.Events.setGroup(false);
   }
 }
 
@@ -543,7 +553,18 @@ function fillNewSlots(block, def, remap) {
   }
 }
 
-function newSlots(def, state) {
+/**
+ * Builds the block again for the items the gear would leave (see compose): the same steps the gear's bubble takes. Gives the items,
+ * the keyword arguments last (Python wants positional arguments first).
+ */
+function recompose(block, def, settings, items) {
+  if (def.mutator === "args") items.sort((a, b) => (a.type === "kw") - (b.type === "kw"));
+  const { state, remap } = stateFromItems(def, items);
+  rebuild(block, def, settings, state, remap, true);
+  fillNewSlots(block, def, remap);
+}
+
+function newSlots(def) {
   // After a rebuild the items in the gear must name the new inputs.
   if (def.mutator === "if") {
     let i = 0;
@@ -595,7 +616,7 @@ function initialState(def) {
 }
 
 function hueOf(def) {
-  return CATEGORIES.find((c) => c.id === def.cat).colour;
+  return categoryColour(def.cat);
 }
 
 function definition(def, settings) {
@@ -667,13 +688,23 @@ function definition(def, settings) {
       for (let part = root.getInputTargetBlock("STACK"); part; part = part.getNextBlock()) {
         items.push({ type: part.type.slice((PREFIX + "m_").length), slot: part.bfSlot, block: part });
       }
-      // Python wants positional arguments before keyword ones, so the keyword ones go last (in the order given)
-      if (def.mutator === "args") items.sort((a, b) => (a.type === "kw") - (b.type === "kw"));
-      const { state, remap } = stateFromItems(def, items);
-      rebuild(this, def, settings, state, remap, true);
-      fillNewSlots(this, def, remap);
-      const next = newSlots(def, state);
+      recompose(this, def, settings, items);
+      const next = newSlots(def);
       for (const item of items) item.block.bfSlot = next(item);
+    },
+
+    // The gear without its bubble (the phone's list): the parts the gear would show, and a change of them. A part is
+    // {type: "elif" | "else" | "item" | "pos" | "kw", slot}; a part with slot null is new. One change is one BlockChange event, as the
+    // bubble's is, so it is one step to undo.
+    bfParts() {
+      return def.mutator ? itemsOf(this, def) : null;
+    },
+
+    bfSetParts(parts) {
+      const before = JSON.stringify(this.saveExtraState() ?? {});
+      recompose(this, def, settings, parts);
+      const after = JSON.stringify(this.saveExtraState() ?? {});
+      if (before !== after) Blockly.Events.fire(new Blockly.Events.BlockChange(this, "mutation", null, before, after));
     },
 
     customContextMenu: isStatement ? function (options) { offerStatementMenu(this, options); } : undefined,
@@ -686,6 +717,7 @@ let registeredAs = null;
 export function registerBlocks({ words = "scratch", pythonLine = true, catalogue = null, helpBase = null } = {}) {
   if (words !== "scratch" && words !== "python") throw new Error(`words must be "scratch" or "python", not ${words}`);
   injectStyle();
+  registerIconToolbox();
   registerMutatorBlocks();
   // With Python words there is never a Python line, whatever was asked for
   const settings = { words, pythonLine: words === "scratch" && !!pythonLine };
@@ -750,14 +782,19 @@ export function ownBlocks(workspace) {
   ]);
 }
 
-/** A toolbox with every block, by category. "Your own blocks" is filled by the editor (see OWN_CATEGORY). */
+// "Find a block" is the first item of the toolbox: a custom category whose flyout is the blocks that match what is typed
+// (find.js registers the callback under this name).
+export const SEARCH_CATEGORY = "BF_SEARCH";
+const SEARCH = { kind: "category", name: "Find a block", colour: "#607D8B", icon: "search", custom: SEARCH_CATEGORY };
+
+/** A toolbox with a search first, then every block by category. "Your own blocks" is filled by the editor (see OWN_CATEGORY). */
 export function toolbox() {
   return {
     kind: "categoryToolbox",
-    contents: CATEGORIES.map((cat) => {
-      const head = { kind: "category", name: cat.name, colour: cat.colour };
+    contents: [SEARCH, ...CATEGORIES.map((cat) => {
+      const head = { kind: "category", name: cat.name, colour: cat.colour, icon: cat.icon };
       if (cat.id === "functions") return { ...head, custom: OWN_CATEGORY };
       return { ...head, contents: BLOCKS.filter((b) => b.cat === cat.id).map((b) => entry(b.type)) };
-    }),
+    })],
   };
 }

@@ -1,7 +1,7 @@
 // Editors for slots (Funground_Calls_Note.md, section 6; BF-D-002, BF-D-029).
 //
 // A number block in a degrees slot takes a dial, in a range slot a slider, in a pixels slot a slider from 0 to the canvas size (the first f.size, else 1000; BF-D-043); a text block in a colour slot takes a grid
-// of colour names; the Python code block takes several lines. These are the same blocks with another field in the same
+// of colour names, in a slot whose choices the catalogue lists (a text style) a dropdown of those words; the Python code block takes several lines. These are the same blocks with another field in the same
 // place: no new block types, no new Python, the same saved JSON and the same value. Only a host that gave a catalogue
 // gets them (the catalogue says what a slot is), so without one nothing here runs.
 //
@@ -23,8 +23,9 @@
 
 import * as Blockly from "blockly";
 import { typeOf } from "../blocks/register.js";
-import { dial, slide, multiline, ColourNameField } from "./fields.js";
-import { numberEditor, isColourSlot } from "./slots.js";
+import { refreshFold } from "../fold.js";
+import { dial, slide, multiline, choice, ColourNameField } from "./fields.js";
+import { numberEditor, isColourSlot, choicesOf } from "./slots.js";
 
 const FIELD = { number: "NUM", text: "TEXT", code: "TEXT" };
 
@@ -58,6 +59,7 @@ function swap(block, name, make) {
     Blockly.Events.enable();
   }
   if (block.rendered) block.queueRender();
+  refreshFold(block);                   // a new field is shown, even when the block is folded
   return true;
 }
 
@@ -98,10 +100,11 @@ export class EditorTracker {
         if (editor.key.startsWith("range:")) return { key: editor.key, make: (value) => slide(value, editor) };
         return { key: "plain" };
       }
-      case typeOf("text"):
-        return isColourSlot(block, this.catalogue)
-          ? { key: "colour", make: (value) => new ColourNameField(value, this.catalogue) }
-          : { key: "plain" };
+      case typeOf("text"): {
+        if (isColourSlot(block, this.catalogue)) return { key: "colour", make: (value) => new ColourNameField(value, this.catalogue) };
+        const words = choicesOf(block, this.catalogue);
+        return words ? { key: "choice:" + words.join("|"), make: (value) => choice(value, words) } : { key: "plain" };
+      }
       case typeOf("code"):
         return { key: "lines", make: multiline };
       default:
